@@ -153,6 +153,36 @@
   .badge-pick-row .left{display:flex; align-items:center; gap:8px; font-size:13px;}
   .badge-pick-row .count{font-size:11px; color:var(--muted);}
 
+  /* ---- Career mode ---- */
+  .archetype-card{cursor:pointer; transition:border-color .15s, background .15s;}
+  .archetype-card.selected{border-color:var(--accent2); background:rgba(255,122,26,0.14);}
+  .career-header{display:flex; align-items:center; gap:12px; margin-bottom:10px;}
+  .career-header .cicon{font-size:32px;}
+  .career-header .cname{font-size:17px; font-weight:800;}
+  .career-header .cmeta{font-size:12px; color:var(--muted);}
+  .career-stats-row{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:10px 0;}
+  .career-stat-box{background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:8px; text-align:center;}
+  .career-stat-box .val{font-size:18px; font-weight:800; color:var(--accent2);}
+  .career-stat-box .lbl{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px;}
+  .xp-bar-track{background:var(--panel2); border:1px solid var(--line); border-radius:8px; height:14px; overflow:hidden; margin:4px 0 2px;}
+  .xp-bar-fill{background:linear-gradient(90deg, var(--accent), var(--accent2)); height:100%; transition:width .4s;}
+  .xp-label{font-size:10.5px; color:var(--muted); text-align:center;}
+  .career-attrs-grid{display:grid; grid-template-columns:1fr 1fr; gap:6px 14px; margin-top:12px; font-size:12px;}
+  .career-attrs-grid .attr-row{display:flex; justify-content:space-between;}
+  .career-attrs-grid .attr-row b{color:var(--accent2);}
+  .career-log-entry{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:8px 10px; margin-bottom:8px; font-size:12px;
+  }
+  .career-log-entry .result{font-weight:800;}
+  .career-log-entry .result.win{color:var(--good);}
+  .career-log-entry .result.loss{color:var(--bad);}
+  .level-up-banner{
+    text-align:center; font-weight:900; font-size:15px; padding:10px; border-radius:10px; margin-bottom:10px;
+    background:linear-gradient(135deg, rgba(255,212,71,0.2), rgba(255,122,26,0.16)); color:var(--gold);
+    border:1px solid rgba(255,212,71,0.4);
+  }
+
   /* ---- Cards ---- */
   .card{
     width:100%; aspect-ratio:5/7; border-radius:12px; position:relative;
@@ -538,7 +568,61 @@
     <div id="playoffsWrap"></div>
   </section>
 
+  <!-- CAREER -->
+  <section class="view" id="view-career">
+    <h2 class="section-title">Career Mode</h2>
+
+    <div id="careerCreatePanel">
+      <p class="hint">Create your own player and start at the bottom — a low-rated rookie on a two-way contract. Play games to earn XP and coins, level up your attributes, and climb from Rookie to Legend.</p>
+      <div class="panel">
+        <label style="font-size:12.5px;color:var(--muted);">Player Name</label>
+        <input type="text" id="careerNameInput" placeholder="e.g. Jordan Smith" maxlength="24" style="width:100%;margin:6px 0 12px;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:9px;font-size:13px;">
+        <label style="font-size:12.5px;color:var(--muted);">Position</label>
+        <select id="careerPosSelect" style="width:100%;margin:6px 0 14px;">
+          <option value="PG">Point Guard (PG)</option>
+          <option value="SG">Shooting Guard (SG)</option>
+          <option value="SF">Small Forward (SF)</option>
+          <option value="PF">Power Forward (PF)</option>
+          <option value="C">Center (C)</option>
+        </select>
+        <label style="font-size:12.5px;color:var(--muted);">Archetype</label>
+        <div class="badge-grid" id="archetypePicker" style="margin-top:8px;"></div>
+        <button class="primary" style="margin-top:6px;" onclick="startCareerFlow()">🏀 Start My Career</button>
+      </div>
+    </div>
+
+    <div id="careerHubPanel" style="display:none;">
+      <div class="panel" id="careerSummaryPanel"></div>
+      <div class="panel">
+        <button class="primary" onclick="playCareerGame()">🏀 Play Career Game</button>
+        <button class="secondary" style="width:100%;margin-top:8px;" onclick="retireCareer()">🔁 Retire &amp; Start New Career</button>
+      </div>
+      <div id="careerLogWrap"></div>
+    </div>
+  </section>
+
 </main>
+
+<!-- Career game modal -->
+<div class="modal-overlay" id="careerModal">
+  <div class="modal-box" style="max-width:480px;">
+    <span class="close-x" onclick="closeCareerModal()">✕</span>
+    <h2 id="careerModalTitle" style="margin-top:0;">Career Game</h2>
+    <div class="pov-player-strip" id="careerPlayerStrip"></div>
+    <div class="scoreboard" style="margin:6px 0;">
+      <div><div id="careerMyScore">0</div></div>
+      <div class="vs">-</div>
+      <div><div id="careerOppScore">0</div><div class="q" id="careerQuarterText">Q1</div></div>
+    </div>
+    <div class="pov-log" id="careerLog"></div>
+    <div class="pov-actions" id="careerActions">
+      <button class="secondary" onclick="careerAction('jumper')">🎯 Pull-Up Jumper</button>
+      <button class="secondary" onclick="careerAction('drive')">⚡ Drive to the Rim</button>
+      <button class="secondary" onclick="careerAction('dish')">🤝 Dish to a Teammate</button>
+    </div>
+    <button class="primary" id="careerDoneBtn" style="display:none;" onclick="closeCareerModalAndShowResults()">See Results</button>
+  </div>
+</div>
 
 <nav class="tabs">
   <button class="tab-btn active" data-view="shop" onclick="switchTab('shop')"><span class="icon">🛒</span>Shop</button>
@@ -546,6 +630,7 @@
   <button class="tab-btn" data-view="roster" onclick="switchTab('roster')"><span class="icon">⭐</span>Roster</button>
   <button class="tab-btn" data-view="play" onclick="switchTab('play')"><span class="icon">🏆</span>Play</button>
   <button class="tab-btn" data-view="league" onclick="switchTab('league')"><span class="icon">🏟️</span>League</button>
+  <button class="tab-btn" data-view="career" onclick="switchTab('career')"><span class="icon">🌟</span>Career</button>
 </nav>
 
 <div class="toast" id="toast"></div>
@@ -715,7 +800,7 @@ const SAVE_KEY = 'hoop_packs_save_v1';
 let state = loadState();
 function defaultState(){
   return {coins:5000, collection:{}, roster:[null,null,null,null,null], lastDaily:0, wins:0, losses:0, leagueConf:'East', league:null,
-    badgeInventory:{}, equippedBadges:{}, perks:{}};
+    badgeInventory:{}, equippedBadges:{}, perks:{}, career:null};
 }
 function loadState(){
   try{
@@ -751,6 +836,7 @@ function switchTab(view){
   if(view==='play') renderPlay();
   if(view==='shop'){ renderShop(); renderBadgeShop(); renderPerkShop(); renderEquipUI(); }
   if(view==='league') renderLeague();
+  if(view==='career') renderCareer();
 }
 
 function cardHTML(player, extra){
@@ -1128,17 +1214,22 @@ function closeRosterPicker(){
 
 /* ============================= PLAY / SIMULATION ============================= */
 let cpuTeam = null, cpuLineup = null;
-function pickOpponent(){
+function pickRandomOpponentTeam(){
   const t = TEAMS[Math.floor(Math.random()*TEAMS.length)];
-  cpuTeam = t;
-  cpuLineup = (ROSTERS[t.id]||[]).slice().sort((a,b)=>b[2]-a[2]).slice(0,5)
-    .map((p,idx)=>({name:p[0], pos:p[1], ovr:p[2]}));
+  const lineup = (ROSTERS[t.id]||[]).slice().sort((a,b)=>b[2]-a[2]).slice(0,5)
+    .map(p=>({name:p[0], pos:p[1], ovr:p[2]}));
+  return {team:t, lineup};
+}
+function pickOpponent(){
+  const {team, lineup} = pickRandomOpponentTeam();
+  cpuTeam = team;
+  cpuLineup = lineup;
   const rating = Math.round(cpuLineup.reduce((s,p)=>s+p.ovr,0)/cpuLineup.length);
-  document.getElementById('cpuName').textContent = `${t.city} ${t.name}`;
+  document.getElementById('cpuName').textContent = `${team.city} ${team.name}`;
   document.getElementById('cpuRatingText').textContent = rating+' OVR';
   const badge = document.getElementById('cpuBadge');
-  badge.style.background = `linear-gradient(135deg, ${t.colors[0]}, ${t.colors[1]})`;
-  badge.textContent = t.id;
+  badge.style.background = `linear-gradient(135deg, ${team.colors[0]}, ${team.colors[1]})`;
+  badge.textContent = team.id;
   renderPlay();
 }
 function myLineup(){
@@ -1555,6 +1646,295 @@ function renderPlayoffsHTML(){
     html += `<div class="panel"><div class="bracket-round"><h4>NBA Finals</h4>${matchupHTML(p.finals)}</div></div>`;
   }
   wrap.innerHTML = html;
+}
+
+/* ============================= CAREER MODE ============================= */
+const CAREER_ARCHETYPES = {
+  sharpshooter:{label:'Sharpshooter', icon:'🎯', primary:'shooting', desc:'Elite shooter who lives beyond the arc.'},
+  lockdown:{label:'Lockdown Defender', icon:'🛡️', primary:'defense', desc:"Shuts down the opponent's best scorer."},
+  speedster:{label:'Speedster', icon:'⚡', primary:'speed', desc:'Blazing fast and always pushing tempo.'},
+  glass:{label:'Glass Cleaner', icon:'🧹', primary:'rebounding', desc:'Dominates the boards on both ends.'},
+  floorgeneral:{label:'Floor General', icon:'🧠', primary:'playmaking', desc:'Elite passer who makes everyone better.'}
+};
+let selectedArchetype = 'sharpshooter';
+
+function newCareerAttributes(pos, archetypeKey){
+  const arche = CAREER_ARCHETYPES[archetypeKey];
+  const bias = POS_BIAS[pos] || POS_BIAS.SF;
+  const attrs = {};
+  ['shooting','defense','speed','rebounding','playmaking'].forEach(k=>{
+    let v = 52 + Math.round(bias[k]*0.5);
+    if(k===arche.primary) v += 14;
+    attrs[k] = clamp(v, 40, 75);
+  });
+  return attrs;
+}
+function careerOvr(){
+  const attrs = state.career.attrs;
+  return Math.round(Object.values(attrs).reduce((a,b)=>a+b,0)/5);
+}
+function careerStageInfo(ovr){
+  if(ovr>=90) return {name:'Legend', contract:'Legacy Max Contract', icon:'👑'};
+  if(ovr>=80) return {name:'All-Star', contract:'Max Contract', icon:'🌟'};
+  if(ovr>=70) return {name:'Starter', contract:'Starting Contract', icon:'🔥'};
+  return {name:'Rookie', contract:'Two-Way Contract', icon:'🌱'};
+}
+function xpNeededForLevel(level){ return 100 + (level-1)*40; }
+function awardCareerXP(xp){
+  const c = state.career;
+  const oldStage = careerStageInfo(careerOvr()).name;
+  c.xp += xp;
+  let leveledUp = 0;
+  while(c.xp >= c.xpToNext){
+    c.xp -= c.xpToNext;
+    c.level++;
+    c.xpToNext = xpNeededForLevel(c.level);
+    const arche = CAREER_ARCHETYPES[c.archetype];
+    Object.keys(c.attrs).forEach(k=>{
+      const gain = (k===arche.primary) ? 3 : 2;
+      c.attrs[k] = clamp(c.attrs[k] + gain, 40, 99);
+    });
+    leveledUp++;
+  }
+  const newStage = careerStageInfo(careerOvr()).name;
+  return {leveledUp, stageChanged: newStage!==oldStage, newStage};
+}
+
+function renderArchetypePicker(){
+  const grid = document.getElementById('archetypePicker');
+  grid.innerHTML = Object.entries(CAREER_ARCHETYPES).map(([key,a])=>`
+    <div class="badge-card archetype-card ${selectedArchetype===key?'selected':''}" onclick="selectArchetype('${key}')">
+      <div class="bicon">${a.icon}</div>
+      <h4>${a.label}</h4>
+      <div class="desc">${a.desc}</div>
+    </div>`).join('');
+}
+function selectArchetype(key){
+  selectedArchetype = key;
+  renderArchetypePicker();
+}
+function startCareerFlow(){
+  const name = document.getElementById('careerNameInput').value.trim() || 'Rookie Baller';
+  const pos = document.getElementById('careerPosSelect').value;
+  const attrs = newCareerAttributes(pos, selectedArchetype);
+  state.career = {
+    name, pos, archetype:selectedArchetype, attrs,
+    level:1, xp:0, xpToNext:xpNeededForLevel(1),
+    gamesPlayed:0, wins:0, losses:0, log:[],
+    createdAt:Date.now()
+  };
+  saveState();
+  showToast(`Welcome to the league, ${name}!`);
+  renderCareer();
+}
+function retireCareer(){
+  if(!confirm('Retire this player and start a new career? This cannot be undone.')) return;
+  state.career = null;
+  saveState();
+  renderCareer();
+}
+
+function renderCareer(){
+  const createPanel = document.getElementById('careerCreatePanel');
+  const hubPanel = document.getElementById('careerHubPanel');
+  if(!state.career){
+    createPanel.style.display = 'block';
+    hubPanel.style.display = 'none';
+    renderArchetypePicker();
+    return;
+  }
+  createPanel.style.display = 'none';
+  hubPanel.style.display = 'block';
+  renderCareerSummary();
+  renderCareerLog();
+}
+function renderCareerSummary(){
+  const c = state.career;
+  const ovr = careerOvr();
+  const stage = careerStageInfo(ovr);
+  const arche = CAREER_ARCHETYPES[c.archetype];
+  const xpPct = Math.min(100, Math.round((c.xp/c.xpToNext)*100));
+  document.getElementById('careerSummaryPanel').innerHTML = `
+    <div class="career-header">
+      <div class="cicon">${arche.icon}</div>
+      <div>
+        <div class="cname">${c.name}</div>
+        <div class="cmeta">${c.pos} · ${arche.label} · ${stage.icon} ${stage.name} (${stage.contract})</div>
+      </div>
+    </div>
+    <div class="career-stats-row">
+      <div class="career-stat-box"><div class="val">${ovr}</div><div class="lbl">OVR</div></div>
+      <div class="career-stat-box"><div class="val">${c.level}</div><div class="lbl">Level</div></div>
+      <div class="career-stat-box"><div class="val">${c.wins}-${c.losses}</div><div class="lbl">Record</div></div>
+    </div>
+    <div class="xp-bar-track"><div class="xp-bar-fill" style="width:${xpPct}%"></div></div>
+    <div class="xp-label">${c.xp} / ${c.xpToNext} XP to Level ${c.level+1}</div>
+    <div class="career-attrs-grid">
+      <div class="attr-row"><span>Shooting</span><b>${c.attrs.shooting}</b></div>
+      <div class="attr-row"><span>Defense</span><b>${c.attrs.defense}</b></div>
+      <div class="attr-row"><span>Speed</span><b>${c.attrs.speed}</b></div>
+      <div class="attr-row"><span>Rebounding</span><b>${c.attrs.rebounding}</b></div>
+      <div class="attr-row"><span>Playmaking</span><b>${c.attrs.playmaking}</b></div>
+      <div class="attr-row"><span>Games Played</span><b>${c.gamesPlayed}</b></div>
+    </div>
+  `;
+}
+function renderCareerLog(){
+  const wrap = document.getElementById('careerLogWrap');
+  const log = state.career.log || [];
+  if(log.length===0){
+    wrap.innerHTML = `<div class="empty-msg">No games played yet — tap "Play Career Game" to get started.</div>`;
+    return;
+  }
+  wrap.innerHTML = log.slice().reverse().map(entry=>`
+    <div class="career-log-entry">
+      <span class="result ${entry.win?'win':'loss'}">${entry.win?'W':'L'}</span> vs ${entry.opponent} — ${entry.myScore}-${entry.oppScore} · ${entry.points} PTS, ${entry.assists} AST · +${entry.xp} XP, +${entry.coins} coins
+      ${entry.leveledUp ? `<br><span style="color:var(--gold);">⬆ Leveled up to Level ${entry.newLevel}!</span>` : ''}
+    </div>`).join('');
+}
+
+let careerGame = null;
+function playCareerGame(){
+  if(!state.career) return;
+  const {team, lineup} = pickRandomOpponentTeam();
+  const oppRating = Math.round(lineup.reduce((s,p)=>s+p.ovr,0)/lineup.length);
+  const oppDefense = Math.round(lineup.reduce((s,p)=>s+estimateDefense(p.pos,p.ovr),0)/lineup.length);
+  const ovr = careerOvr();
+  const supportRating = clamp(ovr - 3 + Math.round(Math.random()*10-5), 45, 99);
+  careerGame = {
+    opponentTeam: team, oppRating, oppDefense, supportRating,
+    quarter:1, possessionsLeft:3, possessionsPerQuarter:3,
+    myScore:0, oppScore:0, userPoints:0, userAssists:0, done:false, transitioning:false
+  };
+  document.getElementById('careerModalTitle').textContent = `Career Game — ${state.career.name}`;
+  document.getElementById('careerPlayerStrip').innerHTML = `Playing as <b>${state.career.name}</b> (${state.career.pos}, ${ovr} OVR) vs <b>${team.city} ${team.name}</b>.`;
+  document.getElementById('careerLog').innerHTML = '';
+  document.getElementById('careerActions').style.display = 'flex';
+  document.getElementById('careerDoneBtn').style.display = 'none';
+  document.getElementById('careerModal').classList.add('open');
+  setCareerButtonsEnabled(true);
+  startCareerQuarter();
+}
+function setCareerButtonsEnabled(enabled){
+  document.querySelectorAll('#careerActions button').forEach(b=>b.disabled = !enabled);
+}
+function logCareer(msg, cls){
+  const log = document.getElementById('careerLog');
+  const div = document.createElement('div');
+  div.className = 'entry'+(cls?(' '+cls):'');
+  div.textContent = msg;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+function renderCareerScoreboard(){
+  document.getElementById('careerMyScore').textContent = careerGame.myScore;
+  document.getElementById('careerOppScore').textContent = careerGame.oppScore;
+  document.getElementById('careerQuarterText').textContent = `Q${careerGame.quarter} · ${careerGame.possessionsLeft} touches left`;
+}
+function startCareerQuarter(){
+  if(!careerGame || careerGame.done) return;
+  const [supportPts, oppPts] = simQuarter(careerGame.supportRating, careerGame.oppRating);
+  careerGame.myScore += supportPts;
+  careerGame.oppScore += oppPts;
+  logCareer(`— Q${careerGame.quarter} tips off — your teammates and the ${careerGame.opponentTeam.name} trade early buckets. —`);
+  renderCareerScoreboard();
+}
+function careerAction(type){
+  if(!careerGame || careerGame.done || careerGame.transitioning) return;
+  const attrs = state.career.attrs;
+  const def = careerGame.oppDefense;
+  if(type==='jumper'){
+    const isThree = Math.random()<0.35;
+    const base = isThree?0.32:0.48;
+    const prob = clamp(base + (attrs.shooting-def)*0.006, 0.12, 0.85);
+    if(Math.random()<prob){
+      const pts = isThree?3:2;
+      careerGame.myScore += pts; careerGame.userPoints += pts;
+      logCareer(`🎯 ${state.career.name} drills the ${isThree?'three-pointer':'jumper'}! +${pts}`, 'score');
+    }else{
+      logCareer(`🎯 ${state.career.name}'s jumper rims out.`, 'miss');
+    }
+  }else if(type==='drive'){
+    const turnoverProb = clamp(0.14 - (attrs.speed-70)*0.0015, 0.04, 0.2);
+    if(Math.random()<turnoverProb){
+      logCareer(`⚡ ${state.career.name} drives but travels — turnover!`, 'miss');
+    }else{
+      const prob = clamp(0.58 + (attrs.speed-def)*0.006, 0.25, 0.92);
+      if(Math.random()<prob){
+        const andOne = Math.random()<0.15;
+        const pts = andOne?3:2;
+        careerGame.myScore += pts; careerGame.userPoints += pts;
+        logCareer(`⚡ ${state.career.name} attacks the rim${andOne?' and gets fouled — AND ONE!':'!'} +${pts}`, 'score');
+      }else{
+        logCareer(`⚡ ${state.career.name} gets stuffed at the rim.`, 'miss');
+      }
+    }
+  }else if(type==='dish'){
+    const turnoverProb = clamp(0.12 - (attrs.playmaking-70)*0.0015, 0.04, 0.18);
+    if(Math.random()<turnoverProb){
+      logCareer(`🤝 ${state.career.name}'s pass is picked off — turnover!`, 'miss');
+    }else{
+      const prob = clamp(0.55 + (attrs.playmaking-def)*0.006, 0.25, 0.92);
+      if(Math.random()<prob){
+        const pts = Math.random()<0.3 ? 3 : 2;
+        careerGame.myScore += pts; careerGame.userAssists += 1;
+        logCareer(`🤝 ${state.career.name} finds a teammate wide open for the assist! +${pts}`, 'score');
+      }else{
+        logCareer(`🤝 ${state.career.name}'s teammate can't finish the pass.`, 'miss');
+      }
+    }
+  }
+  careerGame.possessionsLeft--;
+  renderCareerScoreboard();
+  if(careerGame.possessionsLeft<=0){
+    if(careerGame.quarter<4){
+      careerGame.transitioning = true;
+      setCareerButtonsEnabled(false);
+      setTimeout(()=>{
+        if(!careerGame || careerGame.done) return;
+        careerGame.quarter++;
+        careerGame.possessionsLeft = careerGame.possessionsPerQuarter;
+        careerGame.transitioning = false;
+        startCareerQuarter();
+        setCareerButtonsEnabled(true);
+      }, 600);
+    }else{
+      finishCareerGame();
+    }
+  }
+}
+function finishCareerGame(){
+  careerGame.done = true;
+  document.getElementById('careerActions').style.display = 'none';
+  document.getElementById('careerDoneBtn').style.display = 'block';
+  logCareer(`FINAL: ${state.career.name} ${careerGame.myScore} - ${careerGame.oppScore} ${careerGame.opponentTeam.name}`, careerGame.myScore>careerGame.oppScore?'score':'miss');
+}
+function closeCareerModal(){
+  document.getElementById('careerModal').classList.remove('open');
+}
+function closeCareerModalAndShowResults(){
+  document.getElementById('careerModal').classList.remove('open');
+  const win = careerGame.myScore > careerGame.oppScore;
+  const coins = coinRewardFor(win);
+  const xp = Math.round(25 + careerGame.userPoints*1.2 + careerGame.userAssists*2 + (win?25:0));
+  state.coins += coins;
+  const c = state.career;
+  c.gamesPlayed++;
+  if(win) c.wins++; else c.losses++;
+  const levelResult = awardCareerXP(xp);
+  c.log = c.log || [];
+  c.log.push({
+    opponent: careerGame.opponentTeam.name, win, myScore: careerGame.myScore, oppScore: careerGame.oppScore,
+    points: careerGame.userPoints, assists: careerGame.userAssists, xp, coins,
+    leveledUp: levelResult.leveledUp>0, newLevel: c.level
+  });
+  if(c.log.length>10) c.log = c.log.slice(-10);
+  saveState();
+  refreshTopbar();
+  renderCareer();
+  if(levelResult.leveledUp>0){
+    showToast(levelResult.stageChanged ? `Leveled up to Level ${c.level}! You're now a ${levelResult.newStage}!` : `Leveled up to Level ${c.level}!`);
+  }
 }
 
 /* ============================= INIT ============================= */
