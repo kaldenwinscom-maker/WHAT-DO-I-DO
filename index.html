@@ -120,6 +120,15 @@
   .card.Diamond{border:2px solid transparent; background-origin:border-box;
     box-shadow:0 4px 26px rgba(126,232,250,0.4), 0 0 20px rgba(193,123,255,0.35);
   }
+  .card.evil{
+    background:radial-gradient(circle at 30% 20%, #4a0000 0%, #0a0000 75%) !important;
+    border:2px solid #ff2b2b;
+    box-shadow:0 4px 26px rgba(255,20,20,0.55), 0 0 26px rgba(255,0,0,0.45);
+  }
+  .card.evil .photo-circle{background:radial-gradient(circle at 35% 30%, rgba(255,40,40,0.35), rgba(0,0,0,0.35)); border-color:rgba(255,60,60,0.6);}
+  .card.evil .photo-circle svg{fill:#ff3b3b;}
+  .card.evil .rarity-label{color:#ff6b6b;}
+  .card.evil .team-badge{background:rgba(120,0,0,0.6) !important;}
   .card .team-badge{
     align-self:flex-start; font-size:9px; font-weight:800; letter-spacing:0.5px;
     padding:2px 6px; border-radius:6px; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,0.4);
@@ -458,7 +467,7 @@ GSW:[['Stephen Curry','PG',96],['Jimmy Butler','SF',88],['Draymond Green','PF',8
 HOU:[['Alperen Sengun','C',87],['Jalen Green','SG',82],['Fred VanVleet','PG',82],['Amen Thompson','SF',81],['Jabari Smith Jr.','PF',79],['Dillon Brooks','SF',78],['Tari Eason','PF',76],['Steven Adams','C',74],['Cam Whitmore','SF',75],['Reed Sheppard','PG',72]],
 IND:[['Tyrese Haliburton','PG',89],['Pascal Siakam','PF',87],['Myles Turner','C',82],['Bennedict Mathurin','SG',80],['Andrew Nembhard','PG',78],['Aaron Nesmith','SF',76],['Obi Toppin','PF',75],["T.J. McConnell",'PG',74],['Isaiah Jackson','C',72],['Ben Sheppard','SG',68]],
 LAC:[['Kawhi Leonard','SF',91],['James Harden','PG',87],['Ivica Zubac','C',82],['Norman Powell','SG',80],['Bogdan Bogdanovic','SG',78],['Derrick Jones Jr.','SF',76],['Kris Dunn','PG',74],['Nicolas Batum','SF',73],['Amir Coffey','SG',71],['Drew Eubanks','C',68]],
-LAL:[['Luka Doncic','PG',96],['LeBron James','SF',94],['Austin Reaves','SG',83],['Deandre Ayton','C',80],['Rui Hachimura','PF',78],['Dalton Knecht','SG',74],['Jarred Vanderbilt','PF',73],['Jaxson Hayes','C',73],['Gabe Vincent','PG',72],['Jordan Goodwin','PG',68]],
+LAL:[['Luka Doncic','PG',96],['LeBron James','SF',94],['Austin Reaves','SG',83],['Deandre Ayton','C',80],['Rui Hachimura','PF',78],['Dalton Knecht','SG',74],['Jarred Vanderbilt','PF',73],['Jaxson Hayes','C',73],['Gabe Vincent','PG',72],['Jordan Goodwin','PG',68],['Evil LeBron James','SF',99]],
 MEM:[['Ja Morant','PG',90],['Jaren Jackson Jr.','PF',87],['Desmond Bane','SG',85],['Marcus Smart','PG',79],['Santi Aldama','PF',76],['GG Jackson','SF',76],['Brandon Clarke','PF',75],['Zach Edey','C',74],['Scotty Pippen Jr.','PG',71],['Vince Williams Jr.','SF',70]],
 MIA:[['Bam Adebayo','C',88],['Tyler Herro','SG',85],['Terry Rozier','PG',78],['Jaime Jaquez Jr.','SF',76],["Kel'el Ware",'C',76],['Duncan Robinson','SF',75],['Nikola Jovic','SF',74],['Davion Mitchell','PG',72],['Pelle Larsson','SG',70],['Haywood Highsmith','SF',68]],
 MIL:[['Giannis Antetokounmpo','PF',97],['Damian Lillard','PG',89],['Brook Lopez','C',79],['Khris Middleton','SF',79],['Kyle Kuzma','SF',76],['Bobby Portis','PF',77],['Gary Trent Jr.','SG',74],['AJ Green','SG',71],['Andre Jackson Jr.','SF',70],['Ryan Rollins','PG',68]],
@@ -505,6 +514,9 @@ function tierForOvr(ovr){
   if(ovr>=75) return 'Silver';
   return 'Bronze';
 }
+// Special chase cards: maxed-out attributes, distinct "evil" card art.
+const MAXED_PLAYERS = new Set(['Evil LeBron James']);
+const EVIL_PLAYERS = new Set(['Evil LeBron James']);
 function buildPlayers(){
   const list = [];
   TEAMS.forEach(team=>{
@@ -515,14 +527,15 @@ function buildPlayers(){
       const rng = hashSeed(id+name);
       const bias = POS_BIAS[pos];
       const jitter = ()=> Math.round((rng()-0.5)*8);
-      const attrs = {
+      const maxed = MAXED_PLAYERS.has(name);
+      const attrs = maxed ? {shooting:99,defense:99,speed:99,rebounding:99,playmaking:99} : {
         shooting: clamp(ovr + bias.shooting + jitter(), 35, 99),
         defense: clamp(ovr + bias.defense + jitter(), 35, 99),
         speed: clamp(ovr + bias.speed + jitter(), 35, 99),
         rebounding: clamp(ovr + bias.rebounding + jitter(), 35, 99),
         playmaking: clamp(ovr + bias.playmaking + jitter(), 35, 99)
       };
-      list.push({id,name,pos,ovr,team:team.id,rarity:tierForOvr(ovr),...attrs});
+      list.push({id,name,pos,ovr,team:team.id,rarity:tierForOvr(ovr),evil:EVIL_PLAYERS.has(name),...attrs});
     });
   });
   return list;
@@ -577,13 +590,13 @@ function cardHTML(player, extra){
   const team = TEAMS_BY_ID[player.team];
   const grad = `linear-gradient(160deg, ${team.colors[0]} 0%, ${team.colors[1]} 130%)`;
   const count = state.collection[player.id]||0;
-  return `<div class="card ${player.rarity}" style="background:${grad};">
+  return `<div class="card ${player.rarity}${player.evil?' evil':''}" style="background:${grad};">
     <div class="pos">${player.pos}</div>
     <div class="team-badge" style="background:rgba(0,0,0,0.35)">${team.id}</div>
     <div class="photo-wrap"><div class="photo-circle"><svg viewBox="0 0 100 130"><use href="#playerSilhouette"/></svg></div></div>
     <div>
       <div class="ovr">${player.ovr}</div>
-      <div class="rarity-label">${player.rarity}</div>
+      <div class="rarity-label">${player.evil?'😈 ':''}${player.rarity}</div>
       <div class="name">${player.name}</div>
     </div>
     <div class="attrs">
