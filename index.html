@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Hoop Packs — NBA Card Collector</title>
+<style>
+  :root{
+    --bg:#0b0e14;
+    --panel:#131826;
+    --panel2:#1b2233;
+    --line:#2a3350;
+    --text:#eef1f8;
+    --muted:#8b93a7;
+    --accent:#ff7a1a;
+    --accent2:#ffb84d;
+    --good:#28c76f;
+    --bad:#ff5c5c;
+    --bronze:#cd7f32;
+    --silver:#c7ccd6;
+    --gold:#ffd447;
+    --diamond1:#7ee8fa;
+    --diamond2:#c17bff;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:radial-gradient(1200px 800px at 50% -10%, #1a2036 0%, #0b0e14 60%);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    min-height:100vh;
+    padding-bottom:70px;
+  }
+  header.topbar{
+    position:sticky; top:0; z-index:50;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 14px;
+    background:rgba(11,14,20,0.9);
+    backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);
+  }
+  header.topbar h1{
+    font-size:16px; margin:0; letter-spacing:0.5px;
+    display:flex; align-items:center; gap:8px;
+  }
+  header.topbar h1 .ball{font-size:20px;}
+  .stats-pill{
+    display:flex; gap:8px; align-items:center;
+    background:var(--panel2); border:1px solid var(--line);
+    padding:6px 12px; border-radius:999px; font-size:13px; font-weight:600;
+  }
+  .stats-pill .coin{color:var(--gold);}
+  .stats-pill .record{color:var(--muted); font-weight:500;}
+
+  main{max-width:980px; margin:0 auto; padding:14px;}
+
+  nav.tabs{
+    position:fixed; bottom:0; left:0; right:0; z-index:60;
+    display:flex; background:var(--panel); border-top:1px solid var(--line);
+    padding:6px 4px calc(6px + env(safe-area-inset-bottom));
+  }
+  nav.tabs button{
+    flex:1; background:none; border:none; color:var(--muted);
+    font-size:11px; font-weight:600; padding:8px 2px 4px; border-radius:10px;
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    cursor:pointer;
+  }
+  nav.tabs button .icon{font-size:19px;}
+  nav.tabs button.active{color:var(--accent2); background:rgba(255,122,26,0.12);}
+
+  section.view{display:none;}
+  section.view.active{display:block; animation:fadein .25s ease;}
+  @keyframes fadein{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);}}
+
+  h2.section-title{font-size:18px; margin:4px 0 12px; display:flex; align-items:center; gap:8px;}
+  p.hint{color:var(--muted); font-size:12.5px; line-height:1.5; margin:0 0 14px;}
+
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:14px; margin-bottom:14px;
+  }
+
+  /* ---- Shop ---- */
+  .shop-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  @media(max-width:520px){.shop-grid{grid-template-columns:1fr;}}
+  .pack-card{
+    border-radius:16px; padding:16px; position:relative; overflow:hidden;
+    border:1px solid var(--line); cursor:pointer; transition:transform .15s;
+    display:flex; flex-direction:column; gap:8px; min-height:150px;
+  }
+  .pack-card:active{transform:scale(0.97);}
+  .pack-card.standard{background:linear-gradient(135deg,#2b3350,#171c2c);}
+  .pack-card.premium{background:linear-gradient(135deg,#3a2b12,#241a08);}
+  .pack-card.daily{background:linear-gradient(135deg,#123a2b,#0a1f17);}
+  .pack-card h3{margin:0; font-size:16px;}
+  .pack-card .desc{color:var(--muted); font-size:12px; flex:1;}
+  .pack-card .price{font-weight:700; font-size:14px;}
+  .pack-card .price .coin{color:var(--gold);}
+  .pack-card button.buy{
+    margin-top:auto; background:var(--accent); color:#1a0e00; border:none;
+    font-weight:700; padding:9px; border-radius:10px; cursor:pointer; font-size:13px;
+  }
+  .pack-card button.buy:disabled{background:#3a3f4d; color:#7a8091; cursor:not-allowed;}
+  .odds-row{display:flex; gap:6px; flex-wrap:wrap; font-size:10.5px;}
+  .odds-chip{padding:2px 7px; border-radius:8px; font-weight:700;}
+  .odds-chip.Bronze{background:rgba(205,127,50,0.2); color:var(--bronze);}
+  .odds-chip.Silver{background:rgba(199,204,214,0.18); color:var(--silver);}
+  .odds-chip.Gold{background:rgba(255,212,71,0.18); color:var(--gold);}
+  .odds-chip.Diamond{background:linear-gradient(90deg,rgba(126,232,250,0.22),rgba(193,123,255,0.22)); color:#d9f3ff;}
+
+  /* ---- Cards ---- */
+  .card{
+    width:100%; aspect-ratio:5/7; border-radius:12px; position:relative;
+    padding:8px; display:flex; flex-direction:column; justify-content:space-between;
+    border:2px solid var(--bronze); overflow:hidden;
+    box-shadow:0 4px 14px rgba(0,0,0,0.35);
+  }
+  .card.Silver{border-color:var(--silver); box-shadow:0 4px 18px rgba(199,204,214,0.25);}
+  .card.Gold{border-color:var(--gold); box-shadow:0 4px 22px rgba(255,212,71,0.35);}
+  .card.Diamond{border:2px solid transparent; background-origin:border-box;
+    box-shadow:0 4px 26px rgba(126,232,250,0.4), 0 0 20px rgba(193,123,255,0.35);
+  }
+  .card .team-badge{
+    align-self:flex-start; font-size:9px; font-weight:800; letter-spacing:0.5px;
+    padding:2px 6px; border-radius:6px; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,0.4);
+  }
+  .card .pos{position:absolute; top:8px; right:8px; font-size:10px; font-weight:800; color:rgba(255,255,255,0.85);}
+  .card .ovr{font-size:26px; font-weight:900; line-height:1; margin-top:2px;}
+  .card .rarity-label{font-size:8.5px; letter-spacing:1.5px; text-transform:uppercase; opacity:0.85; font-weight:700;}
+  .card .name{font-size:12px; font-weight:800; line-height:1.15; margin-top:4px;}
+  .card .attrs{display:grid; grid-template-columns:1fr 1fr; gap:2px 6px; font-size:8.5px; color:rgba(255,255,255,0.85); margin-top:4px;}
+  .card .attrs div span{opacity:0.7; margin-right:3px;}
+  .card .count-badge{
+    position:absolute; bottom:8px; right:8px; background:rgba(0,0,0,0.55);
+    border-radius:10px; padding:1px 6px; font-size:10px; font-weight:700;
+  }
+
+  .card-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(108px,1fr)); gap:10px;}
+
+  /* ---- Filters ---- */
+  .filter-row{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;}
+  select, .filter-row input{
+    background:var(--panel2); color:var(--text); border:1px solid var(--line);
+    border-radius:8px; padding:7px 9px; font-size:12.5px;
+  }
+
+  /* ---- Roster ---- */
+  .roster-slots{display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-bottom:14px;}
+  @media(max-width:600px){.roster-slots{grid-template-columns:repeat(3,1fr);}}
+  .slot{
+    border:2px dashed var(--line); border-radius:12px; aspect-ratio:5/7;
+    display:flex; align-items:center; justify-content:center; color:var(--muted);
+    font-size:11px; cursor:pointer; position:relative; padding:4px; text-align:center;
+  }
+  .slot.filled{border-style:solid; padding:0;}
+  .slot .remove-x{
+    position:absolute; top:4px; right:4px; background:rgba(0,0,0,0.6); color:#fff;
+    width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    font-size:11px; cursor:pointer;
+  }
+  .roster-rating{text-align:center; font-size:13px; color:var(--muted); margin-bottom:14px;}
+  .roster-rating b{color:var(--accent2); font-size:16px;}
+
+  /* ---- Play ---- */
+  .matchup{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px;}
+  .team-side{flex:1; text-align:center;}
+  .team-side .badge-lg{
+    width:56px; height:56px; border-radius:50%; margin:0 auto 6px; display:flex;
+    align-items:center; justify-content:center; font-weight:900; font-size:14px; color:#fff;
+    text-shadow:0 1px 2px rgba(0,0,0,0.5);
+  }
+  .team-side .tname{font-size:13px; font-weight:700;}
+  .team-side .trating{font-size:11px; color:var(--muted);}
+  .vs{font-weight:900; color:var(--muted); font-size:14px;}
+
+  .scoreboard{
+    display:flex; align-items:center; justify-content:center; gap:18px;
+    font-size:34px; font-weight:900; margin:10px 0;
+  }
+  .scoreboard .q{font-size:11px; color:var(--muted); font-weight:600; margin-top:2px;}
+  .quarters-row{display:flex; justify-content:center; gap:8px; font-size:11px; color:var(--muted); margin-bottom:10px;}
+  .quarters-row span.active-q{color:var(--accent2); font-weight:700;}
+
+  button.primary{
+    background:var(--accent); color:#1a0e00; border:none; font-weight:800;
+    padding:11px 16px; border-radius:12px; cursor:pointer; font-size:14px; width:100%;
+  }
+  button.primary:disabled{background:#3a3f4d; color:#7a8091; cursor:not-allowed;}
+  button.secondary{
+    background:var(--panel2); color:var(--text); border:1px solid var(--line);
+    font-weight:700; padding:9px 14px; border-radius:10px; cursor:pointer; font-size:13px;
+  }
+
+  table.boxscore{width:100%; border-collapse:collapse; font-size:12px; margin-top:8px;}
+  table.boxscore th, table.boxscore td{padding:6px 4px; text-align:left; border-bottom:1px solid var(--line);}
+  table.boxscore th{color:var(--muted); font-weight:600; font-size:10.5px; text-transform:uppercase;}
+  table.boxscore tr.win-row{background:rgba(40,199,111,0.06);}
+
+  .result-banner{
+    text-align:center; font-weight:900; font-size:18px; padding:10px; border-radius:10px; margin-bottom:10px;
+  }
+  .result-banner.win{background:rgba(40,199,111,0.15); color:var(--good);}
+  .result-banner.loss{background:rgba(255,92,92,0.15); color:var(--bad);}
+
+  /* ---- Modal / pack opening ---- */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(5,6,10,0.85); z-index:200;
+    display:none; align-items:center; justify-content:center; padding:16px;
+    backdrop-filter:blur(4px);
+  }
+  .modal-overlay.open{display:flex;}
+  .modal-box{
+    background:var(--panel); border:1px solid var(--line); border-radius:18px;
+    padding:20px; max-width:680px; width:100%; max-height:90vh; overflow-y:auto;
+    text-align:center;
+  }
+  .pack-art{
+    width:130px; height:170px; margin:0 auto 16px; border-radius:14px;
+    display:flex; align-items:center; justify-content:center; font-size:38px;
+    box-shadow:0 8px 30px rgba(0,0,0,0.5); cursor:pointer;
+    transition:transform .2s;
+  }
+  .pack-art:active{transform:scale(0.95);}
+  .pack-art.shaking{animation:shake .45s ease infinite;}
+  @keyframes shake{
+    0%,100%{transform:rotate(0deg);}
+    25%{transform:rotate(-6deg);}
+    75%{transform:rotate(6deg);}
+  }
+  .reveal-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:12px; margin:16px 0;}
+  .reveal-slot{aspect-ratio:5/7;}
+  .reveal-slot .card{opacity:0; transform:scale(0.4) rotateY(90deg);}
+  .reveal-slot.shown .card{
+    opacity:1; transform:scale(1) rotateY(0deg);
+    transition:all .5s cubic-bezier(.2,.9,.3,1.3);
+  }
+  .close-x{position:absolute; top:10px; right:14px; font-size:20px; color:var(--muted); cursor:pointer;}
+
+  .toast{
+    position:fixed; top:64px; left:50%; transform:translateX(-50%); z-index:300;
+    background:var(--panel2); border:1px solid var(--line); padding:9px 16px; border-radius:10px;
+    font-size:13px; font-weight:600; display:none; box-shadow:0 6px 18px rgba(0,0,0,0.4);
+  }
+  .toast.show{display:block; animation:toastin .25s ease;}
+  @keyframes toastin{from{opacity:0; transform:translate(-50%,-8px);} to{opacity:1; transform:translate(-50%,0);}}
+
+  .empty-msg{color:var(--muted); text-align:center; padding:30px 10px; font-size:13px;}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <h1><span class="ball">🏀</span> Hoop Packs</h1>
+  <div class="stats-pill">
+    <span class="coin">🪙 <span id="coinCount">0</span></span>
+    <span class="record" id="recordText">0-0</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- SHOP -->
+  <section class="view active" id="view-shop">
+    <h2 class="section-title">Shop</h2>
+    <p class="hint">Spend coins on packs to draw new players. Come back daily for a free pack.</p>
+    <div class="shop-grid">
+      <div class="pack-card daily" id="dailyPackCard">
+        <h3>🎁 Daily Free Pack</h3>
+        <div class="desc">3 cards · same odds as Standard</div>
+        <div class="odds-row">
+          <span class="odds-chip Bronze">Bronze 65%</span>
+          <span class="odds-chip Silver">Silver 25%</span>
+          <span class="odds-chip Gold">Gold 8%</span>
+          <span class="odds-chip Diamond">Diamond 2%</span>
+        </div>
+        <div class="price">FREE</div>
+        <button class="buy" id="dailyBtn" onclick="openPackFlow('daily')">Claim</button>
+      </div>
+      <div class="pack-card standard">
+        <h3>🥈 Standard Pack</h3>
+        <div class="desc">5 cards · balanced odds</div>
+        <div class="odds-row">
+          <span class="odds-chip Bronze">Bronze 65%</span>
+          <span class="odds-chip Silver">Silver 25%</span>
+          <span class="odds-chip Gold">Gold 8%</span>
+          <span class="odds-chip Diamond">Diamond 2%</span>
+        </div>
+        <div class="price"><span class="coin">🪙 500</span></div>
+        <button class="buy" onclick="openPackFlow('standard')">Buy & Open</button>
+      </div>
+      <div class="pack-card premium">
+        <h3>🥇 Premium Pack</h3>
+        <div class="desc">5 cards · better odds</div>
+        <div class="odds-row">
+          <span class="odds-chip Bronze">Bronze 30%</span>
+          <span class="odds-chip Silver">Silver 40%</span>
+          <span class="odds-chip Gold">Gold 22%</span>
+          <span class="odds-chip Diamond">Diamond 8%</span>
+        </div>
+        <div class="price"><span class="coin">🪙 2000</span></div>
+        <button class="buy" onclick="openPackFlow('premium')">Buy & Open</button>
+      </div>
+      <div class="pack-card" style="background:linear-gradient(135deg,#241238,#150a20);">
+        <h3>💎 Legend Pack</h3>
+        <div class="desc">3 cards · Gold/Diamond only</div>
+        <div class="odds-row">
+          <span class="odds-chip Gold">Gold 70%</span>
+          <span class="odds-chip Diamond">Diamond 30%</span>
+        </div>
+        <div class="price"><span class="coin">🪙 6000</span></div>
+        <button class="buy" onclick="openPackFlow('legend')">Buy & Open</button>
+      </div>
+    </div>
+    <p class="hint">Win games to earn coins. Rosters are based on the 2025-26 season and can be edited directly in the source (the <code>ROSTERS</code> object) to stay current.</p>
+  </section>
+
+  <!-- COLLECTION -->
+  <section class="view" id="view-collection">
+    <h2 class="section-title">Collection</h2>
+    <div class="filter-row">
+      <select id="filterTeam" onchange="renderCollection()"></select>
+      <select id="filterRarity" onchange="renderCollection()">
+        <option value="">All Rarities</option>
+        <option>Bronze</option><option>Silver</option><option>Gold</option><option>Diamond</option>
+      </select>
+      <select id="sortBy" onchange="renderCollection()">
+        <option value="ovr">Sort: OVR</option>
+        <option value="name">Sort: Name</option>
+        <option value="team">Sort: Team</option>
+      </select>
+    </div>
+    <div class="card-grid" id="collectionGrid"></div>
+  </section>
+
+  <!-- ROSTER -->
+  <section class="view" id="view-roster">
+    <h2 class="section-title">Starting Lineup</h2>
+    <p class="hint">Tap a slot to fill it from your collection. Your 5 starters determine your team rating in games.</p>
+    <div class="roster-slots" id="rosterSlots"></div>
+    <div class="roster-rating">Team Rating: <b id="rosterRatingText">--</b></div>
+    <div class="panel" id="rosterPickerPanel" style="display:none;">
+      <h3 style="margin-top:0;font-size:14px;">Choose a player</h3>
+      <div class="card-grid" id="rosterPickerGrid"></div>
+      <button class="secondary" style="margin-top:10px;" onclick="closeRosterPicker()">Cancel</button>
+    </div>
+  </section>
+
+  <!-- PLAY -->
+  <section class="view" id="view-play">
+    <h2 class="section-title">Play a Game</h2>
+    <div class="panel">
+      <div class="matchup" id="matchupBox">
+        <div class="team-side"><div class="badge-lg" style="background:#333">YOU</div><div class="tname">Your Squad</div><div class="trating" id="myRatingText">-- OVR</div></div>
+        <div class="vs">VS</div>
+        <div class="team-side"><div class="badge-lg" id="cpuBadge" style="background:#333">CPU</div><div class="tname" id="cpuName">Pick opponent</div><div class="trating" id="cpuRatingText">-- OVR</div></div>
+      </div>
+      <button class="secondary" style="width:100%;margin-bottom:10px;" onclick="pickOpponent()">🔀 Find Opponent</button>
+      <div class="scoreboard" id="scoreboard" style="display:none;">
+        <div><div id="myScore">0</div></div>
+        <div class="vs">-</div>
+        <div><div id="cpuScore">0</div><div class="q" id="quarterText">Q1</div></div>
+      </div>
+      <button class="primary" id="playBtn" onclick="startGame()" disabled>Complete your roster to play</button>
+    </div>
+    <div class="panel" id="resultPanel" style="display:none;">
+      <div class="result-banner" id="resultBanner"></div>
+      <table class="boxscore" id="boxscoreTable"></table>
+    </div>
+  </section>
+
+</main>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-view="shop" onclick="switchTab('shop')"><span class="icon">🛒</span>Shop</button>
+  <button class="tab-btn" data-view="collection" onclick="switchTab('collection')"><span class="icon">📇</span>Binder</button>
+  <button class="tab-btn" data-view="roster" onclick="switchTab('roster')"><span class="icon">⭐</span>Roster</button>
+  <button class="tab-btn" data-view="play" onclick="switchTab('play')"><span class="icon">🏆</span>Play</button>
+</nav>
+
+<div class="toast" id="toast"></div>
+
+<!-- Pack opening modal -->
+<div class="modal-overlay" id="packModal">
+  <div class="modal-box">
+    <span class="close-x" onclick="closePackModal()">✕</span>
+    <h2 id="packModalTitle" style="margin-top:0;">Standard Pack</h2>
+    <div class="pack-art" id="packArt" style="background:linear-gradient(135deg,#3a4568,#1c2236);" onclick="revealPack()">📦</div>
+    <p class="hint" id="packModalHint">Tap the pack to open it!</p>
+    <div class="reveal-grid" id="revealGrid"></div>
+    <button class="primary" id="collectBtn" style="display:none;" onclick="closePackModal()">Collect &amp; Continue</button>
+  </div>
+</div>
+
+<script>
+/* ============================= DATA ============================= */
+const TEAMS = [
+{id:'ATL',city:'Atlanta',name:'Hawks',colors:['#E03A3E','#C1D32F'],conf:'East'},
+{id:'BOS',city:'Boston',name:'Celtics',colors:['#007A33','#BA9653'],conf:'East'},
+{id:'BKN',city:'Brooklyn',name:'Nets',colors:['#000000','#777777'],conf:'East'},
+{id:'CHA',city:'Charlotte',name:'Hornets',colors:['#1D1160','#00788C'],conf:'East'},
+{id:'CHI',city:'Chicago',name:'Bulls',colors:['#CE1141','#000000'],conf:'East'},
+{id:'CLE',city:'Cleveland',name:'Cavaliers',colors:['#860038','#FDBB30'],conf:'East'},
+{id:'DAL',city:'Dallas',name:'Mavericks',colors:['#00538C','#002B5E'],conf:'West'},
+{id:'DEN',city:'Denver',name:'Nuggets',colors:['#0E2240','#FEC524'],conf:'West'},
+{id:'DET',city:'Detroit',name:'Pistons',colors:['#C8102E','#1D42BA'],conf:'East'},
+{id:'GSW',city:'Golden State',name:'Warriors',colors:['#1D428A','#FFC72C'],conf:'West'},
+{id:'HOU',city:'Houston',name:'Rockets',colors:['#CE1141','#000000'],conf:'West'},
+{id:'IND',city:'Indiana',name:'Pacers',colors:['#002D62','#FDBB30'],conf:'East'},
+{id:'LAC',city:'LA',name:'Clippers',colors:['#C8102E','#1D428A'],conf:'West'},
+{id:'LAL',city:'Los Angeles',name:'Lakers',colors:['#552583','#FDB927'],conf:'West'},
+{id:'MEM',city:'Memphis',name:'Grizzlies',colors:['#5D76A9','#12173F'],conf:'West'},
+{id:'MIA',city:'Miami',name:'Heat',colors:['#98002E','#F9A01B'],conf:'East'},
+{id:'MIL',city:'Milwaukee',name:'Bucks',colors:['#00471B','#EEE1C6'],conf:'East'},
+{id:'MIN',city:'Minnesota',name:'Timberwolves',colors:['#0C2340','#236192'],conf:'West'},
+{id:'NOP',city:'New Orleans',name:'Pelicans',colors:['#0C2340','#C8102E'],conf:'West'},
+{id:'NYK',city:'New York',name:'Knicks',colors:['#006BB6','#F58426'],conf:'East'},
+{id:'OKC',city:'Oklahoma City',name:'Thunder',colors:['#007AC1','#EF3B24'],conf:'West'},
+{id:'ORL',city:'Orlando',name:'Magic',colors:['#0077C0','#C4CED4'],conf:'East'},
+{id:'PHI',city:'Philadelphia',name:'76ers',colors:['#006BB6','#ED174C'],conf:'East'},
+{id:'PHX',city:'Phoenix',name:'Suns',colors:['#1D1160','#E56020'],conf:'West'},
+{id:'POR',city:'Portland',name:'Trail Blazers',colors:['#E03A3E','#000000'],conf:'West'},
+{id:'SAC',city:'Sacramento',name:'Kings',colors:['#5A2D81','#63727A'],conf:'West'},
+{id:'SAS',city:'San Antonio',name:'Spurs',colors:['#C4CED4','#000000'],conf:'West'},
+{id:'TOR',city:'Toronto',name:'Raptors',colors:['#CE1141','#000000'],conf:'East'},
+{id:'UTA',city:'Utah',name:'Jazz',colors:['#002B5C','#F9A01B'],conf:'West'},
+{id:'WAS',city:'Washington',name:'Wizards',colors:['#002B5C','#E31837'],conf:'East'}
+];
+
+// [name, position, overall] — edit these lists any time to keep rosters current.
+const ROSTERS = {
+ATL:[['Trae Young','PG',90],['Jalen Johnson','SF',85],['Dyson Daniels','SG',82],['Onyeka Okongwu','C',83],['Zaccharie Risacher','SF',77],['Clint Capela','C',78],['Vit Krejci','SF',73],['Georges Niang','PF',74],['Terance Mann','SG',75],['Kobe Bufkin','PG',70]],
+BOS:[['Jayson Tatum','SF',96],['Jaylen Brown','SG',91],['Kristaps Porzingis','C',87],['Derrick White','PG',85],['Jrue Holiday','PG',84],['Al Horford','C',79],['Payton Pritchard','PG',78],['Sam Hauser','SF',74],['Luke Kornet','C',72],['Neemias Queta','C',70]],
+BKN:[['Cam Thomas','SG',82],['Nic Claxton','C',80],['Cameron Johnson','SF',78],['Ben Simmons','PG',74],['Dennis Schroder','PG',76],['Dorian Finney-Smith','PF',75],["Day'Ron Sharpe",'C',73],['Noah Clowney','PF',71],['Keon Johnson','SG',68],['Trendon Watford','PF',70]],
+CHA:[['LaMelo Ball','PG',89],['Brandon Miller','SF',82],['Miles Bridges','PF',81],['Mark Williams','C',79],['Josh Green','SG',74],['Nick Richards','C',73],['Grant Williams','PF',74],['Tre Mann','PG',72],['Vasilije Micic','PG',70],['KJ Simpson','PG',65]],
+CHI:[['Zach LaVine','SG',85],['Coby White','PG',82],['Nikola Vucevic','C',82],['Josh Giddey','PG',80],['Patrick Williams','PF',76],['Ayo Dosunmu','SG',74],['Matas Buzelis','PF',73],['Torrey Craig','SF',70],['Jevon Carter','PG',68],['Julian Phillips','SF',67]],
+CLE:[['Donovan Mitchell','SG',94],['Darius Garland','PG',87],['Evan Mobley','PF',88],['Jarrett Allen','C',85],['Max Strus','SF',78],['Isaac Okoro','SF',75],['Caris LeVert','SG',76],['Ty Jerome','PG',74],['Dean Wade','PF',71],['Craig Porter Jr.','PG',66]],
+DAL:[['Kyrie Irving','PG',91],['Anthony Davis','PF',93],['Klay Thompson','SG',82],['Daniel Gafford','C',80],['P.J. Washington','PF',78],['Dereck Lively II','C',77],['Naji Marshall','SF',74],['Spencer Dinwiddie','PG',73],['Dwight Powell','C',68],['Max Christie','SG',72]],
+DEN:[['Nikola Jokic','C',98],['Jamal Murray','PG',88],['Michael Porter Jr.','SF',82],['Aaron Gordon','PF',83],['Christian Braun','SG',78],['Russell Westbrook','PG',79],['Peyton Watson','SF',74],['Zeke Nnaji','PF',70],['DaRon Holmes II','PF',72],['Julian Strawther','SG',71]],
+DET:[['Cade Cunningham','PG',89],['Jalen Duren','C',82],['Tobias Harris','SF',79],['Ausar Thompson','SF',78],['Jaden Ivey','SG',79],['Malik Beasley','SG',76],['Isaiah Stewart','C',76],['Tim Hardaway Jr.','SG',74],['Ron Holland','SF',71],['Marcus Sasser','PG',68]],
+GSW:[['Stephen Curry','PG',96],['Jimmy Butler','SF',88],['Draymond Green','PF',84],['Jonathan Kuminga','SF',81],['Andrew Wiggins','SF',79],['Buddy Hield','SG',78],['Brandin Podziemski','PG',77],['Moses Moody','SG',74],['Gary Payton II','SG',73],['Quinten Post','C',68]],
+HOU:[['Alperen Sengun','C',87],['Jalen Green','SG',82],['Fred VanVleet','PG',82],['Amen Thompson','SF',81],['Jabari Smith Jr.','PF',79],['Dillon Brooks','SF',78],['Tari Eason','PF',76],['Steven Adams','C',74],['Cam Whitmore','SF',75],['Reed Sheppard','PG',72]],
+IND:[['Tyrese Haliburton','PG',89],['Pascal Siakam','PF',87],['Myles Turner','C',82],['Bennedict Mathurin','SG',80],['Andrew Nembhard','PG',78],['Aaron Nesmith','SF',76],['Obi Toppin','PF',75],["T.J. McConnell",'PG',74],['Isaiah Jackson','C',72],['Ben Sheppard','SG',68]],
+LAC:[['Kawhi Leonard','SF',91],['James Harden','PG',87],['Ivica Zubac','C',82],['Norman Powell','SG',80],['Bogdan Bogdanovic','SG',78],['Derrick Jones Jr.','SF',76],['Kris Dunn','PG',74],['Nicolas Batum','SF',73],['Amir Coffey','SG',71],['Drew Eubanks','C',68]],
+LAL:[['Luka Doncic','PG',96],['LeBron James','SF',94],['Austin Reaves','SG',83],['Deandre Ayton','C',80],['Rui Hachimura','PF',78],['Dalton Knecht','SG',74],['Jarred Vanderbilt','PF',73],['Jaxson Hayes','C',73],['Gabe Vincent','PG',72],['Jordan Goodwin','PG',68]],
+MEM:[['Ja Morant','PG',90],['Jaren Jackson Jr.','PF',87],['Desmond Bane','SG',85],['Marcus Smart','PG',79],['Santi Aldama','PF',76],['GG Jackson','SF',76],['Brandon Clarke','PF',75],['Zach Edey','C',74],['Scotty Pippen Jr.','PG',71],['Vince Williams Jr.','SF',70]],
+MIA:[['Bam Adebayo','C',88],['Tyler Herro','SG',85],['Terry Rozier','PG',78],['Jaime Jaquez Jr.','SF',76],["Kel'el Ware",'C',76],['Duncan Robinson','SF',75],['Nikola Jovic','SF',74],['Davion Mitchell','PG',72],['Pelle Larsson','SG',70],['Haywood Highsmith','SF',68]],
+MIL:[['Giannis Antetokounmpo','PF',97],['Damian Lillard','PG',89],['Brook Lopez','C',79],['Khris Middleton','SF',79],['Kyle Kuzma','SF',76],['Bobby Portis','PF',77],['Gary Trent Jr.','SG',74],['AJ Green','SG',71],['Andre Jackson Jr.','SF',70],['Ryan Rollins','PG',68]],
+MIN:[['Anthony Edwards','SG',94],['Rudy Gobert','C',85],['Julius Randle','PF',82],['Jaden McDaniels','SF',79],['Naz Reid','C',78],['Donte DiVincenzo','SG',77],['Mike Conley','PG',75],['Nickeil Alexander-Walker','SG',74],['Terrence Shannon Jr.','SG',71],['Rob Dillingham','PG',70]],
+NOP:[['Zion Williamson','PF',87],['Brandon Ingram','SF',85],['Dejounte Murray','PG',82],["CJ McCollum",'SG',79],['Trey Murphy III','SF',78],['Herbert Jones','SF',76],['Yves Missi','C',73],['Jose Alvarado','PG',72],['Jordan Hawkins','SG',71],['Jeremiah Fears','PG',68]],
+NYK:[['Jalen Brunson','PG',92],['Karl-Anthony Towns','C',89],['Mikal Bridges','SF',83],["OG Anunoby",'SF',82],['Josh Hart','SG',78],['Mitchell Robinson','C',75],['Miles McBride','PG',73],['Precious Achiuwa','PF',71],['Landry Shamet','SG',70],['Jericho Sims','C',66]],
+OKC:[['Shai Gilgeous-Alexander','PG',97],['Jalen Williams','SF',86],['Chet Holmgren','C',87],['Isaiah Hartenstein','C',79],['Alex Caruso','SG',78],['Luguentz Dort','SG',78],['Cason Wallace','PG',76],['Aaron Wiggins','SG',75],['Kenrich Williams','SF',72],['Ajay Mitchell','PG',70]],
+ORL:[['Paolo Banchero','PF',89],['Franz Wagner','SF',87],['Jalen Suggs','PG',80],['Wendell Carter Jr.','C',78],['Jonathan Isaac','PF',76],['Cole Anthony','PG',74],['Anthony Black','PG',73],['Goga Bitadze','C',70],['Tristan da Silva','SF',71],['Moritz Wagner','C',70]],
+PHI:[['Joel Embiid','C',93],['Tyrese Maxey','PG',89],['Paul George','SF',83],['Kelly Oubre Jr.','SF',76],['Jared McCain','SG',75],['Quentin Grimes','SG',74],['Andre Drummond','C',73],['Guerschon Yabusele','PF',72],['Eric Gordon','SG',70],['Justin Edwards','SF',68]],
+PHX:[['Kevin Durant','SF',96],['Devin Booker','SG',91],['Bradley Beal','SG',82],['Grayson Allen','SG',78],['Jusuf Nurkic','C',76],["Royce O'Neale",'PF',74],['Ryan Dunn','SF',71],['Collin Gillespie','PG',68],['Oso Ighodaro','C',66],['Monte Morris','PG',67]],
+POR:[['Deni Avdija','SF',80],['Anfernee Simons','SG',81],['Scoot Henderson','PG',79],['Shaedon Sharpe','SG',77],['Jerami Grant','PF',78],['Donovan Clingan','C',75],['Toumani Camara','SF',74],['Robert Williams III','C',72],['Matisse Thybulle','SG',71],['Duop Reath','C',65]],
+SAC:[['Domantas Sabonis','C',87],['DeMar DeRozan','SF',84],['Malik Monk','SG',80],['Keegan Murray','PF',78],['Keon Ellis','SG',72],['Trey Lyles','PF',68],['Doug McDermott','SF',69],['Devin Carter','PG',70],['Jake LaRavia','SF',71],['Maxime Raynaud','C',66]],
+SAS:[['Victor Wembanyama','C',95],["De'Aaron Fox",'PG',88],['Devin Vassell','SG',81],['Stephon Castle','SG',79],['Chris Paul','PG',77],['Harrison Barnes','SF',76],['Julian Champagnie','SF',73],['Keldon Johnson','SF',75],['Jeremy Sochan','PF',76],['Charles Bassey','C',65]],
+TOR:[['Scottie Barnes','SF',87],['RJ Barrett','SF',80],['Immanuel Quickley','PG',78],['Jakob Poeltl','C',78],['Gradey Dick','SG',74],['Ochai Agbaji','SG',71],['Bruce Brown','SG',74],['Chris Boucher','PF',72],['Jonathan Mogbo','PF',68],["Ja'Kobe Walter",'SG',69]],
+UTA:[['Lauri Markkanen','PF',84],['Walker Kessler','C',79],['Collin Sexton','SG',77],['John Collins','PF',76],['Keyonte George','PG',75],['Taylor Hendricks','PF',70],['Isaiah Collier','PG',68],['Kyle Filipowski','C',69],['Svi Mykhailiuk','SF',66],['Brice Sensabaugh','SF',67]],
+WAS:[['Jordan Poole','SG',78],['Bilal Coulibaly','SF',76],['Alex Sarr','C',75],['Bub Carrington','PG',72],['Corey Kispert','SF',73],['Kyshawn George','SF',70],['Marvin Bagley III','PF',71],['Richaun Holmes','C',68],['Anthony Gill','PF',65],['Tristan Vukcevic','C',66]]
+};
+
+/* ---------- Build full player list with generated attributes ---------- */
+function hashSeed(str){
+  let h = 1779033703 ^ str.length;
+  for(let i=0;i<str.length;i++){
+    h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  return function(){
+    h = Math.imul(h ^ (h >>> 16), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  };
+}
+const POS_BIAS = {
+  PG:{shooting:0,defense:-6,speed:12,rebounding:-18,playmaking:14},
+  SG:{shooting:8,defense:-2,speed:8,rebounding:-14,playmaking:2},
+  SF:{shooting:2,defense:2,speed:2,rebounding:-2,playmaking:0},
+  PF:{shooting:-6,defense:6,speed:-6,rebounding:10,playmaking:-8},
+  C:{shooting:-14,defense:8,speed:-14,rebounding:20,playmaking:-14}
+};
+function clamp(v,min,max){return Math.max(min,Math.min(max,v));}
+function tierForOvr(ovr){
+  if(ovr>=92) return 'Diamond';
+  if(ovr>=85) return 'Gold';
+  if(ovr>=75) return 'Silver';
+  return 'Bronze';
+}
+function buildPlayers(){
+  const list = [];
+  TEAMS.forEach(team=>{
+    const roster = ROSTERS[team.id] || [];
+    roster.forEach((p,idx)=>{
+      const [name,pos,ovr] = p;
+      const id = team.id+'-'+idx;
+      const rng = hashSeed(id+name);
+      const bias = POS_BIAS[pos];
+      const jitter = ()=> Math.round((rng()-0.5)*8);
+      const attrs = {
+        shooting: clamp(ovr + bias.shooting + jitter(), 35, 99),
+        defense: clamp(ovr + bias.defense + jitter(), 35, 99),
+        speed: clamp(ovr + bias.speed + jitter(), 35, 99),
+        rebounding: clamp(ovr + bias.rebounding + jitter(), 35, 99),
+        playmaking: clamp(ovr + bias.playmaking + jitter(), 35, 99)
+      };
+      list.push({id,name,pos,ovr,team:team.id,rarity:tierForOvr(ovr),...attrs});
+    });
+  });
+  return list;
+}
+const PLAYERS = buildPlayers();
+const PLAYERS_BY_ID = Object.fromEntries(PLAYERS.map(p=>[p.id,p]));
+const TEAMS_BY_ID = Object.fromEntries(TEAMS.map(t=>[t.id,t]));
+
+/* ============================= STATE ============================= */
+const SAVE_KEY = 'hoop_packs_save_v1';
+let state = loadState();
+function defaultState(){
+  return {coins:5000, collection:{}, roster:[null,null,null,null,null], lastDaily:0, wins:0, losses:0};
+}
+function loadState(){
+  try{
+    const raw = localStorage.getItem(SAVE_KEY);
+    if(!raw) return defaultState();
+    const parsed = JSON.parse(raw);
+    return Object.assign(defaultState(), parsed);
+  }catch(e){ return defaultState(); }
+}
+function saveState(){ localStorage.setItem(SAVE_KEY, JSON.stringify(state)); }
+
+function ownedIds(){ return Object.keys(state.collection).filter(id=>state.collection[id]>0); }
+function addToCollection(id){ state.collection[id] = (state.collection[id]||0)+1; }
+
+/* ============================= UI HELPERS ============================= */
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._h);
+  showToast._h = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+function refreshTopbar(){
+  document.getElementById('coinCount').textContent = state.coins.toLocaleString();
+  document.getElementById('recordText').textContent = state.wins+'-'+state.losses;
+}
+function switchTab(view){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+view).classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
+  if(view==='collection') renderCollection();
+  if(view==='roster') renderRoster();
+  if(view==='play') renderPlay();
+  if(view==='shop') renderShop();
+}
+
+function cardHTML(player, extra){
+  extra = extra || {};
+  const team = TEAMS_BY_ID[player.team];
+  const grad = `linear-gradient(160deg, ${team.colors[0]} 0%, ${team.colors[1]} 130%)`;
+  const count = state.collection[player.id]||0;
+  return `<div class="card ${player.rarity}" style="background:${grad};">
+    <div class="pos">${player.pos}</div>
+    <div class="team-badge" style="background:rgba(0,0,0,0.35)">${team.id}</div>
+    <div>
+      <div class="ovr">${player.ovr}</div>
+      <div class="rarity-label">${player.rarity}</div>
+      <div class="name">${player.name}</div>
+    </div>
+    <div class="attrs">
+      <div><span>SHT</span>${player.shooting}</div>
+      <div><span>DEF</span>${player.defense}</div>
+      <div><span>SPD</span>${player.speed}</div>
+      <div><span>REB</span>${player.rebounding}</div>
+      <div><span>PLM</span>${player.playmaking}</div>
+      <div><span>TM</span>${team.city}</div>
+    </div>
+    ${extra.showCount && count>1 ? `<div class="count-badge">x${count}</div>` : ''}
+  </div>`;
+}
+
+/* ============================= SHOP / PACKS ============================= */
+const TIER_RANGE = {Bronze:[60,74], Silver:[75,84], Gold:[85,91], Diamond:[92,99]};
+const PACKS = {
+  standard:{label:'Standard Pack', cost:500, cards:5, odds:{Bronze:0.65,Silver:0.25,Gold:0.08,Diamond:0.02}},
+  premium:{label:'Premium Pack', cost:2000, cards:5, odds:{Bronze:0.30,Silver:0.40,Gold:0.22,Diamond:0.08}},
+  legend:{label:'Legend Pack', cost:6000, cards:3, odds:{Gold:0.70,Diamond:0.30}},
+  daily:{label:'Daily Free Pack', cost:0, cards:3, odds:{Bronze:0.65,Silver:0.25,Gold:0.08,Diamond:0.02}}
+};
+const DAY_MS = 24*60*60*1000;
+
+function renderShop(){
+  const btn = document.getElementById('dailyBtn');
+  const remaining = state.lastDaily + DAY_MS - Date.now();
+  if(remaining > 0){
+    btn.disabled = true;
+    const hrs = Math.floor(remaining/3600000), mins = Math.floor((remaining%3600000)/60000);
+    btn.textContent = `Come back in ${hrs}h ${mins}m`;
+  }else{
+    btn.disabled = false;
+    btn.textContent = 'Claim';
+  }
+}
+
+function pickTier(odds){
+  const r = Math.random();
+  let acc = 0;
+  const entries = Object.entries(odds);
+  for(const [tier,p] of entries){
+    acc += p;
+    if(r <= acc) return tier;
+  }
+  return entries[entries.length-1][0];
+}
+function pickPlayerForTier(tier){
+  const [lo,hi] = TIER_RANGE[tier];
+  const pool = PLAYERS.filter(p=>p.ovr>=lo && p.ovr<=hi);
+  return pool[Math.floor(Math.random()*pool.length)];
+}
+
+let currentPack = null;
+let currentPulls = [];
+function openPackFlow(key){
+  const pack = PACKS[key];
+  if(key==='daily'){
+    if(state.lastDaily + DAY_MS > Date.now()){ showToast('Daily pack already claimed. Come back later!'); return; }
+  }else if(state.coins < pack.cost){
+    showToast("Not enough coins for that pack!");
+    return;
+  }
+  if(key==='daily'){ state.lastDaily = Date.now(); }
+  else { state.coins -= pack.cost; }
+  saveState(); refreshTopbar(); renderShop();
+
+  currentPack = key;
+  currentPulls = [];
+  for(let i=0;i<pack.cards;i++){
+    const tier = pickTier(pack.odds);
+    currentPulls.push(pickPlayerForTier(tier));
+  }
+  document.getElementById('packModalTitle').textContent = pack.label;
+  document.getElementById('packModalHint').textContent = 'Tap the pack to open it!';
+  document.getElementById('packArt').classList.remove('shaking');
+  document.getElementById('packArt').style.display='flex';
+  document.getElementById('revealGrid').innerHTML = '';
+  document.getElementById('collectBtn').style.display='none';
+  document.getElementById('packModal').classList.add('open');
+}
+function closePackModal(){
+  document.getElementById('packModal').classList.remove('open');
+  renderShop();
+}
+function revealPack(){
+  const art = document.getElementById('packArt');
+  if(art.dataset.opening) return;
+  art.dataset.opening = '1';
+  art.classList.add('shaking');
+  document.getElementById('packModalHint').textContent = 'Opening...';
+  setTimeout(()=>{
+    art.style.display='none';
+    document.getElementById('packModalHint').textContent = 'Tap “Collect” when you\'re ready.';
+    const grid = document.getElementById('revealGrid');
+    grid.innerHTML = currentPulls.map((p,i)=>`<div class="reveal-slot" id="rslot${i}">${cardHTML(p)}</div>`).join('');
+    currentPulls.forEach(p=>addToCollection(p.id));
+    saveState();
+    currentPulls.forEach((p,i)=>{
+      setTimeout(()=>{
+        const el = document.getElementById('rslot'+i);
+        if(el) el.classList.add('shown');
+      }, 220*i);
+    });
+    setTimeout(()=>{
+      document.getElementById('collectBtn').style.display='block';
+      delete art.dataset.opening;
+    }, 220*currentPulls.length + 300);
+  }, 500);
+}
+
+/* ============================= COLLECTION ============================= */
+function populateTeamFilter(){
+  const sel = document.getElementById('filterTeam');
+  sel.innerHTML = '<option value="">All Teams</option>' + TEAMS.map(t=>`<option value="${t.id}">${t.city} ${t.name}</option>`).join('');
+}
+function renderCollection(){
+  const grid = document.getElementById('collectionGrid');
+  const teamFilter = document.getElementById('filterTeam').value;
+  const rarityFilter = document.getElementById('filterRarity').value;
+  const sortBy = document.getElementById('sortBy').value;
+  let owned = ownedIds().map(id=>PLAYERS_BY_ID[id]).filter(Boolean);
+  if(teamFilter) owned = owned.filter(p=>p.team===teamFilter);
+  if(rarityFilter) owned = owned.filter(p=>p.rarity===rarityFilter);
+  if(sortBy==='ovr') owned.sort((a,b)=>b.ovr-a.ovr);
+  if(sortBy==='name') owned.sort((a,b)=>a.name.localeCompare(b.name));
+  if(sortBy==='team') owned.sort((a,b)=>a.team.localeCompare(b.team));
+  if(owned.length===0){
+    grid.innerHTML = `<div class="empty-msg" style="grid-column:1/-1;">No cards yet — open a pack from the Shop tab!</div>`;
+    return;
+  }
+  grid.innerHTML = owned.map(p=>cardHTML(p,{showCount:true})).join('');
+}
+
+/* ============================= ROSTER ============================= */
+let pickingSlot = null;
+function renderRoster(){
+  const wrap = document.getElementById('rosterSlots');
+  wrap.innerHTML = state.roster.map((id,i)=>{
+    if(!id || !PLAYERS_BY_ID[id]) return `<div class="slot" onclick="openRosterPicker(${i})">+ Add<br>Player</div>`;
+    const p = PLAYERS_BY_ID[id];
+    return `<div class="slot filled">${cardHTML(p)}<div class="remove-x" onclick="event.stopPropagation();removeFromRoster(${i})">✕</div></div>`;
+  }).join('');
+  const filled = state.roster.filter(id=>id && PLAYERS_BY_ID[id]);
+  const rating = filled.length ? Math.round(filled.reduce((s,id)=>s+PLAYERS_BY_ID[id].ovr,0)/filled.length) : null;
+  document.getElementById('rosterRatingText').textContent = rating ? `${rating} OVR (${filled.length}/5 filled)` : `Need players (${filled.length}/5 filled)`;
+}
+function openRosterPicker(slotIdx){
+  pickingSlot = slotIdx;
+  const panel = document.getElementById('rosterPickerPanel');
+  const grid = document.getElementById('rosterPickerGrid');
+  const already = new Set(state.roster.filter(Boolean));
+  const owned = ownedIds().map(id=>PLAYERS_BY_ID[id]).filter(p=>p && !already.has(p.id)).sort((a,b)=>b.ovr-a.ovr);
+  if(owned.length===0){
+    grid.innerHTML = `<div class="empty-msg" style="grid-column:1/-1;">No available players — open some packs first!</div>`;
+  }else{
+    grid.innerHTML = owned.map(p=>`<div onclick="assignToRoster('${p.id}')">${cardHTML(p)}</div>`).join('');
+  }
+  panel.style.display='block';
+  panel.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+function assignToRoster(playerId){
+  state.roster[pickingSlot] = playerId;
+  saveState();
+  closeRosterPicker();
+  renderRoster();
+}
+function removeFromRoster(i){
+  state.roster[i] = null;
+  saveState();
+  renderRoster();
+}
+function closeRosterPicker(){
+  document.getElementById('rosterPickerPanel').style.display='none';
+  pickingSlot = null;
+}
+
+/* ============================= PLAY / SIMULATION ============================= */
+let cpuTeam = null, cpuLineup = null;
+function pickOpponent(){
+  const t = TEAMS[Math.floor(Math.random()*TEAMS.length)];
+  cpuTeam = t;
+  cpuLineup = (ROSTERS[t.id]||[]).slice().sort((a,b)=>b[2]-a[2]).slice(0,5)
+    .map((p,idx)=>({name:p[0], pos:p[1], ovr:p[2]}));
+  const rating = Math.round(cpuLineup.reduce((s,p)=>s+p.ovr,0)/cpuLineup.length);
+  document.getElementById('cpuName').textContent = `${t.city} ${t.name}`;
+  document.getElementById('cpuRatingText').textContent = rating+' OVR';
+  const badge = document.getElementById('cpuBadge');
+  badge.style.background = `linear-gradient(135deg, ${t.colors[0]}, ${t.colors[1]})`;
+  badge.textContent = t.id;
+  renderPlay();
+}
+function myLineup(){
+  return state.roster.filter(id=>id && PLAYERS_BY_ID[id]).map(id=>PLAYERS_BY_ID[id]);
+}
+function renderPlay(){
+  const lineup = myLineup();
+  const rating = lineup.length===5 ? Math.round(lineup.reduce((s,p)=>s+p.ovr,0)/5) : null;
+  document.getElementById('myRatingText').textContent = rating ? rating+' OVR' : 'Roster incomplete';
+  const btn = document.getElementById('playBtn');
+  if(lineup.length<5){
+    btn.disabled = true;
+    btn.textContent = 'Complete your roster to play (5 players)';
+  }else if(!cpuTeam){
+    btn.disabled = true;
+    btn.textContent = 'Find an opponent first';
+  }else{
+    btn.disabled = false;
+    btn.textContent = 'Tip Off 🏀';
+  }
+  document.getElementById('scoreboard').style.display='none';
+  document.getElementById('resultPanel').style.display='none';
+}
+
+function simQuarter(myR, oppR){
+  const diff = myR - oppR;
+  const base = 24;
+  const myPts = Math.max(14, Math.round(base + diff*0.35 + (Math.random()*10-5)));
+  const oppPts = Math.max(14, Math.round(base - diff*0.35 + (Math.random()*10-5)));
+  return [myPts, oppPts];
+}
+
+function startGame(){
+  const lineup = myLineup();
+  const myRating = Math.round(lineup.reduce((s,p)=>s+p.ovr,0)/5);
+  const oppRating = Math.round(cpuLineup.reduce((s,p)=>s+p.ovr,0)/5);
+  document.getElementById('playBtn').disabled = true;
+  document.getElementById('scoreboard').style.display='flex';
+  document.getElementById('resultPanel').style.display='none';
+  let myTotal=0, oppTotal=0, q=0;
+  const quarterScores=[];
+  function nextQuarter(){
+    q++;
+    const [m,o] = simQuarter(myRating, oppRating);
+    myTotal+=m; oppTotal+=o;
+    quarterScores.push([m,o]);
+    document.getElementById('myScore').textContent = myTotal;
+    document.getElementById('cpuScore').textContent = oppTotal;
+    document.getElementById('quarterText').textContent = 'Q'+q+' end';
+    if(q<4){
+      setTimeout(nextQuarter, 700);
+    }else{
+      setTimeout(()=>finishGame(myTotal, oppTotal, lineup), 500);
+    }
+  }
+  nextQuarter();
+}
+
+function allocateStat(lineup, total, attrKey){
+  const weights = lineup.map(p=>p[attrKey] + Math.random()*20);
+  const sum = weights.reduce((a,b)=>a+b,0);
+  const raw = weights.map(w=> (w/sum)*total);
+  return raw.map(v=>Math.max(0, Math.round(v)));
+}
+
+function finishGame(myTotal, oppTotal, lineup){
+  const win = myTotal > oppTotal;
+  const reward = win ? 300 : 100;
+  state.coins += reward;
+  if(win) state.wins++; else state.losses++;
+  saveState(); refreshTopbar();
+
+  const pts = allocateStat(lineup, myTotal, 'shooting');
+  const reb = allocateStat(lineup, 40 + Math.round(Math.random()*10), 'rebounding');
+  const ast = allocateStat(lineup, 22 + Math.round(Math.random()*8), 'playmaking');
+
+  const banner = document.getElementById('resultBanner');
+  banner.className = 'result-banner ' + (win ? 'win':'loss');
+  banner.textContent = (win ? '🏆 VICTORY! ' : 'DEFEAT. ') + `${myTotal} - ${oppTotal}  (+${reward} coins)`;
+
+  const table = document.getElementById('boxscoreTable');
+  let rows = `<tr><th>Player</th><th>Pos</th><th>PTS</th><th>REB</th><th>AST</th></tr>`;
+  lineup.forEach((p,i)=>{
+    rows += `<tr class="${win?'win-row':''}"><td>${p.name}</td><td>${p.pos}</td><td>${pts[i]}</td><td>${reb[i]}</td><td>${ast[i]}</td></tr>`;
+  });
+  table.innerHTML = rows;
+  document.getElementById('resultPanel').style.display='block';
+  document.getElementById('playBtn').disabled = false;
+  document.getElementById('playBtn').textContent = 'Play Again 🏀';
+}
+
+/* ============================= INIT ============================= */
+populateTeamFilter();
+refreshTopbar();
+renderShop();
+setInterval(renderShop, 30000);
+</script>
+</body>
+</html>
