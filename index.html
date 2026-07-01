@@ -183,6 +183,20 @@
     border:1px solid rgba(255,212,71,0.4);
   }
 
+  /* ---- Custom player creator ---- */
+  .tier-card.selected, .archetype-card.selected{border-color:var(--accent2); background:rgba(255,122,26,0.14);}
+  .custom-player-row{
+    display:flex; align-items:center; gap:10px; background:var(--panel); border:1px solid var(--line);
+    border-radius:10px; padding:8px 10px; margin-bottom:8px;
+  }
+  .custom-player-row .cp-info{flex:1; font-size:12.5px;}
+  .custom-player-row .cp-info b{font-size:13.5px;}
+  .custom-player-row .cp-info .cp-meta{color:var(--muted); font-size:11px;}
+  .custom-player-row button.release{
+    background:rgba(255,92,92,0.15); color:var(--bad); border:1px solid rgba(255,92,92,0.4);
+    font-weight:700; padding:6px 10px; border-radius:8px; cursor:pointer; font-size:11.5px;
+  }
+
   /* ---- Cards ---- */
   .card{
     width:100%; aspect-ratio:5/7; border-radius:12px; position:relative;
@@ -516,6 +530,25 @@
       <div class="card-grid" id="rosterPickerGrid"></div>
       <button class="secondary" style="margin-top:10px;" onclick="closeRosterPicker()">Cancel</button>
     </div>
+
+    <h2 class="section-title" style="font-size:16px;">Create Your Own Player</h2>
+    <p class="hint">Build a custom card from scratch — pick a name, team, position, archetype, and power level. It's added to your Binder instantly and can go straight into your lineup.</p>
+    <div class="panel">
+      <label style="font-size:12.5px;color:var(--muted);">Player Name</label>
+      <input type="text" id="customNameInput" placeholder="e.g. Alex Rivera" maxlength="24" style="width:100%;margin:6px 0 12px;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:9px;font-size:16px;">
+      <div class="filter-row" style="margin-bottom:12px;">
+        <select id="customTeamSelect" style="flex:1;"></select>
+        <select id="customPosSelect" style="flex:1;">
+          <option value="PG">PG</option><option value="SG">SG</option><option value="SF">SF</option><option value="PF">PF</option><option value="C">C</option>
+        </select>
+      </div>
+      <label style="font-size:12.5px;color:var(--muted);">Archetype</label>
+      <div class="badge-grid" id="customArchetypePicker" style="margin:8px 0 12px;"></div>
+      <label style="font-size:12.5px;color:var(--muted);">Power Level</label>
+      <div class="badge-grid" id="customTierPicker" style="margin:8px 0 12px;"></div>
+      <button class="primary" onclick="createCustomPlayer()">✏️ Create Card</button>
+    </div>
+    <div id="customPlayersListWrap"></div>
   </section>
 
   <!-- PLAY -->
@@ -527,7 +560,7 @@
         <div class="vs">VS</div>
         <div class="team-side"><div class="badge-lg" id="cpuBadge" style="background:#333">CPU</div><div class="tname" id="cpuName">Pick opponent</div><div class="trating" id="cpuRatingText">-- OVR</div></div>
       </div>
-      <button class="secondary" style="width:100%;margin-bottom:10px;" onclick="pickOpponent()">🔀 Find Opponent</button>
+      <button class="secondary" style="width:100%;margin-bottom:10px;" id="findOpponentBtn" onclick="pickOpponent()">🔀 Find Opponent</button>
       <div class="scoreboard" id="scoreboard" style="display:none;">
         <div><div id="myScore">0</div></div>
         <div class="vs">-</div>
@@ -705,36 +738,36 @@ const TEAMS = [
 
 // [name, position, overall] — edit these lists any time to keep rosters current.
 const ROSTERS = {
-ATL:[['Trae Young','PG',90],['Jalen Johnson','SF',85],['Dyson Daniels','SG',82],['Onyeka Okongwu','C',83],['Zaccharie Risacher','SF',77],['Clint Capela','C',78],['Vit Krejci','SF',73],['Georges Niang','PF',74],['Terance Mann','SG',75],['Kobe Bufkin','PG',70],['Luke Kennard','SG',73],['Larry Nance Jr.','PF',72],['Dominick Barlow','PF',64],['Keaton Wallace','PG',63],['Mouhamed Gueye','PF',65]],
-BOS:[['Jayson Tatum','SF',96],['Jaylen Brown','SG',91],['Kristaps Porzingis','C',87],['Derrick White','PG',85],['Jrue Holiday','PG',84],['Al Horford','C',79],['Payton Pritchard','PG',78],['Sam Hauser','SF',74],['Luke Kornet','C',72],['Neemias Queta','C',70],['Jordan Walsh','SF',67],['Baylor Scheierman','SG',68],['JD Davison','PG',64],['Xavier Tillman','C',69],['Anton Watson','PF',63]],
-BKN:[['Cam Thomas','SG',82],['Nic Claxton','C',80],['Cameron Johnson','SF',78],['Ben Simmons','PG',74],['Dennis Schroder','PG',76],['Dorian Finney-Smith','PF',75],["Day'Ron Sharpe",'C',73],['Noah Clowney','PF',71],['Keon Johnson','SG',68],['Trendon Watford','PF',70],['De\'Anthony Melton','SG',70],['Ziaire Williams','SF',69],['Tyson Etienne','PG',62],['Jalen Wilson','SF',68],['Tosan Evbuomwan','PF',61]],
-CHA:[['LaMelo Ball','PG',89],['Brandon Miller','SF',82],['Miles Bridges','PF',81],['Mark Williams','C',79],['Josh Green','SG',74],['Nick Richards','C',73],['Grant Williams','PF',74],['Tre Mann','PG',72],['Vasilije Micic','PG',70],['KJ Simpson','PG',65],['Moussa Diabate','PF',66],['Cody Martin','SF',71],['Damion Baugh','PG',64],['Tidjane Salaun','PF',69],['Reggie Jackson','PG',68]],
-CHI:[['Zach LaVine','SG',85],['Coby White','PG',82],['Nikola Vucevic','C',82],['Josh Giddey','PG',80],['Patrick Williams','PF',76],['Ayo Dosunmu','SG',74],['Matas Buzelis','PF',73],['Torrey Craig','SF',70],['Jevon Carter','PG',68],['Julian Phillips','SF',67],['Kevin Huerter','SG',73],['Jalen Smith','PF',70],['Dalen Terry','SG',67],['Talen Horton-Tucker','SG',69],['Zach Collins','C',68]],
-CLE:[['Donovan Mitchell','SG',94],['Darius Garland','PG',87],['Evan Mobley','PF',88],['Jarrett Allen','C',85],['Max Strus','SF',78],['Isaac Okoro','SF',75],['Caris LeVert','SG',76],['Ty Jerome','PG',74],['Dean Wade','PF',71],['Craig Porter Jr.','PG',66],['De\'Andre Hunter','SF',78],['Sam Merrill','SG',71],['Emoni Bates','SF',64],['Nae\'Qwan Tomlin','PF',63],['Javonte Green','SF',66]],
-DAL:[['Kyrie Irving','PG',91],['Anthony Davis','PF',93],['Klay Thompson','SG',82],['Daniel Gafford','C',80],['P.J. Washington','PF',78],['Dereck Lively II','C',77],['Naji Marshall','SF',74],['Spencer Dinwiddie','PG',73],['Dwight Powell','C',68],['Max Christie','SG',72],['Caleb Martin','SF',74],['A.J. Lawson','SG',65],['Brandon Williams','PG',61],['Olivier-Maxence Prosper','PF',66],['Kessler Edwards','SF',65]],
-DEN:[['Nikola Jokic','C',98],['Jamal Murray','PG',88],['Michael Porter Jr.','SF',82],['Aaron Gordon','PF',83],['Christian Braun','SG',78],['Russell Westbrook','PG',79],['Peyton Watson','SF',74],['Zeke Nnaji','PF',70],['DaRon Holmes II','PF',72],['Julian Strawther','SG',71],['Dario Saric','PF',71],['Vlatko Cancar','SF',68],['Jalen Pickett','PG',65],['Hunter Tyson','SF',64],['Trey Alexander','SG',63]],
-DET:[['Cade Cunningham','PG',89],['Jalen Duren','C',82],['Tobias Harris','SF',79],['Ausar Thompson','SF',78],['Jaden Ivey','SG',79],['Malik Beasley','SG',76],['Isaiah Stewart','C',76],['Tim Hardaway Jr.','SG',74],['Ron Holland','SF',71],['Marcus Sasser','PG',68],['Simone Fontecchio','SF',71],['Paul Reed','PF',68],['Daniss Jenkins','PG',60],['Bobi Klintman','PF',63],['Cole Swider','SF',61]],
-GSW:[['Stephen Curry','PG',96],['Jimmy Butler','SF',88],['Draymond Green','PF',84],['Jonathan Kuminga','SF',81],['Andrew Wiggins','SF',79],['Buddy Hield','SG',78],['Brandin Podziemski','PG',77],['Moses Moody','SG',74],['Gary Payton II','SG',73],['Quinten Post','C',68],['Trayce Jackson-Davis','C',74],['Kyle Anderson','SF',71],['Gui Santos','SF',64],['Jackson Rowe','PF',60],['Pat Spencer','PG',59]],
-HOU:[['Alperen Sengun','C',87],['Jalen Green','SG',82],['Fred VanVleet','PG',82],['Amen Thompson','SF',81],['Jabari Smith Jr.','PF',79],['Dillon Brooks','SF',78],['Tari Eason','PF',76],['Steven Adams','C',74],['Cam Whitmore','SF',75],['Reed Sheppard','PG',72],['Jae\'Sean Tate','SF',71],['Aaron Holiday','PG',69],['Josh Okogie','SG',68],['N\'Faly Dante','C',64],['JT Thor','PF',63]],
-IND:[['Tyrese Haliburton','PG',89],['Pascal Siakam','PF',87],['Myles Turner','C',82],['Bennedict Mathurin','SG',80],['Andrew Nembhard','PG',78],['Aaron Nesmith','SF',76],['Obi Toppin','PF',75],["T.J. McConnell",'PG',74],['Isaiah Jackson','C',72],['Ben Sheppard','SG',68],['James Wiseman','C',68],['Enrique Freeman','PF',63],['Johnny Furphy','SF',62],['Tony Bradley','C',61],['Quenton Jackson','PG',60]],
-LAC:[['Kawhi Leonard','SF',91],['James Harden','PG',87],['Ivica Zubac','C',82],['Norman Powell','SG',80],['Bogdan Bogdanovic','SG',78],['Derrick Jones Jr.','SF',76],['Kris Dunn','PG',74],['Nicolas Batum','SF',73],['Amir Coffey','SG',71],['Drew Eubanks','C',68],['Jahmi\'us Ramsey','SG',64],['Jordan Miller','SF',63],['Cam Christie','SG',61],['Trentyn Flowers','SF',62],['Emanuel Miller','SF',60]],
-LAL:[['Luka Doncic','PG',96],['LeBron James','SF',94],['Austin Reaves','SG',83],['Deandre Ayton','C',80],['Rui Hachimura','PF',78],['Dalton Knecht','SG',74],['Jarred Vanderbilt','PF',73],['Jaxson Hayes','C',73],['Gabe Vincent','PG',72],['Jordan Goodwin','PG',68],['Evil LeBron James','SF',99],['Christian Wood','C',69],['Jalen Hood-Schifino','PG',64],['Cam Reddish','SF',66],['Bronny James','PG',62],['Maxi Kleber','PF',67]],
-MEM:[['Ja Morant','PG',90],['Jaren Jackson Jr.','PF',87],['Desmond Bane','SG',85],['Marcus Smart','PG',79],['Santi Aldama','PF',76],['GG Jackson','SF',76],['Brandon Clarke','PF',75],['Zach Edey','C',74],['Scotty Pippen Jr.','PG',71],['Vince Williams Jr.','SF',70],['John Konchar','SF',69],['Jay Huff','C',63],['Yuki Kawamura','PG',60],['Jaylen Wells','SG',68],['Cedric Coward','SF',64]],
-MIA:[['Bam Adebayo','C',88],['Tyler Herro','SG',85],['Terry Rozier','PG',78],['Jaime Jaquez Jr.','SF',76],["Kel'el Ware",'C',76],['Duncan Robinson','SF',75],['Nikola Jovic','SF',74],['Davion Mitchell','PG',72],['Pelle Larsson','SG',70],['Haywood Highsmith','SF',68],['Alec Burks','SG',69],['Dru Smith','PG',64],['Josh Christopher','SG',63],['Keshad Johnson','SF',61],['Isaiah Stevens','PG',60]],
-MIL:[['Giannis Antetokounmpo','PF',97],['Damian Lillard','PG',89],['Brook Lopez','C',79],['Khris Middleton','SF',79],['Kyle Kuzma','SF',76],['Bobby Portis','PF',77],['Gary Trent Jr.','SG',74],['AJ Green','SG',71],['Andre Jackson Jr.','SF',70],['Ryan Rollins','PG',68],['Taurean Prince','SF',70],['Chris Livingston','SF',62],['Tyler Smith','PF',61],['MarJon Beauchamp','SF',63],['Jamaree Bouyea','PG',60]],
-MIN:[['Anthony Edwards','SG',94],['Rudy Gobert','C',85],['Julius Randle','PF',82],['Jaden McDaniels','SF',79],['Naz Reid','C',78],['Donte DiVincenzo','SG',77],['Mike Conley','PG',75],['Nickeil Alexander-Walker','SG',74],['Terrence Shannon Jr.','SG',71],['Rob Dillingham','PG',70],['Josh Minott','SF',63],['Luka Garza','C',68],['Leonard Miller','PF',62],['Jaylen Clark','SG',64],['Bones Hyland','SG',63]],
-NOP:[['Zion Williamson','PF',87],['Brandon Ingram','SF',85],['Dejounte Murray','PG',82],["CJ McCollum",'SG',79],['Trey Murphy III','SF',78],['Herbert Jones','SF',76],['Yves Missi','C',73],['Jose Alvarado','PG',72],['Jordan Hawkins','SG',71],['Jeremiah Fears','PG',68],['Karlo Matkovic','C',64],['Antonio Reeves','SG',67],['Javon Freeman-Liberty','PG',62],['Kevon Looney','C',71],['Jared Butler','PG',61]],
-NYK:[['Jalen Brunson','PG',92],['Karl-Anthony Towns','C',89],['Mikal Bridges','SF',83],["OG Anunoby",'SF',82],['Josh Hart','SG',78],['Mitchell Robinson','C',75],['Miles McBride','PG',73],['Precious Achiuwa','PF',71],['Landry Shamet','SG',70],['Jericho Sims','C',66],['Cameron Payne','PG',68],['Pacome Dadiet','SF',62],['Ariel Hukporti','C',64],['Tyler Kolek','PG',61],['Kevin McCullar Jr.','SF',60]],
-OKC:[['Shai Gilgeous-Alexander','PG',97],['Jalen Williams','SF',86],['Chet Holmgren','C',87],['Isaiah Hartenstein','C',79],['Alex Caruso','SG',78],['Luguentz Dort','SG',78],['Cason Wallace','PG',76],['Aaron Wiggins','SG',75],['Kenrich Williams','SF',72],['Ajay Mitchell','PG',70],['Dillon Jones','SF',64],['Branden Carlson','C',60],['Adam Flagler','PG',61],['Ousmane Dieng','SF',66],['Nikola Topic','PG',65]],
-ORL:[['Paolo Banchero','PF',89],['Franz Wagner','SF',87],['Jalen Suggs','PG',80],['Wendell Carter Jr.','C',78],['Jonathan Isaac','PF',76],['Cole Anthony','PG',74],['Anthony Black','PG',73],['Goga Bitadze','C',70],['Tristan da Silva','SF',71],['Moritz Wagner','C',70],['Jett Howard','SF',66],['Caleb Houstan','SF',64],['Braxton Key','PF',61],['Trevelin Queen','SG',62],['Gary Harris','SG',73]],
-PHI:[['Joel Embiid','C',93],['Tyrese Maxey','PG',89],['Paul George','SF',83],['Kelly Oubre Jr.','SF',76],['Jared McCain','SG',75],['Quentin Grimes','SG',74],['Andre Drummond','C',73],['Guerschon Yabusele','PF',72],['Eric Gordon','SG',70],['Justin Edwards','SF',68],['Jeff Dowtin','PG',60],['Adem Bona','C',67],['Ricky Council IV','SG',65],['KJ Martin','PF',66],['Jared Rhoden','SF',61]],
-PHX:[['Kevin Durant','SF',96],['Devin Booker','SG',91],['Bradley Beal','SG',82],['Grayson Allen','SG',78],['Jusuf Nurkic','C',76],["Royce O'Neale",'PF',74],['Ryan Dunn','SF',71],['Collin Gillespie','PG',68],['Oso Ighodaro','C',66],['Monte Morris','PG',67],['Damion Lee','SG',65],['Tyus Jones','PG',76],['Bol Bol','C',68],['Bruno Fernando','C',64],['TyTy Washington','PG',61]],
-POR:[['Deni Avdija','SF',80],['Anfernee Simons','SG',81],['Scoot Henderson','PG',79],['Shaedon Sharpe','SG',77],['Jerami Grant','PF',78],['Donovan Clingan','C',75],['Toumani Camara','SF',74],['Robert Williams III','C',72],['Matisse Thybulle','SG',71],['Duop Reath','C',65],['Kris Murray','SF',64],['Rayan Rupert','SF',63],['Jabari Walker','PF',63],['Sidy Cissoko','SF',61],['Justin Minaya','PF',60]],
-SAC:[['Domantas Sabonis','C',87],['DeMar DeRozan','SF',84],['Malik Monk','SG',80],['Keegan Murray','PF',78],['Keon Ellis','SG',72],['Trey Lyles','PF',68],['Doug McDermott','SF',69],['Devin Carter','PG',70],['Jake LaRavia','SF',71],['Maxime Raynaud','C',66],['Orlando Robinson','C',63],['Isaac Jones','PF',61],['Colby Jones','SG',60],['Nique Clifford','SG',62],['JaVale McGee','C',64]],
-SAS:[['Victor Wembanyama','C',95],["De'Aaron Fox",'PG',88],['Devin Vassell','SG',81],['Stephon Castle','SG',79],['Chris Paul','PG',77],['Harrison Barnes','SF',76],['Julian Champagnie','SF',73],['Keldon Johnson','SF',75],['Jeremy Sochan','PF',76],['Charles Bassey','C',65],['Malaki Branham','SG',68],['Sandro Mamukelashvili','PF',69],['Blake Wesley','SG',62],['David Duke Jr.','PG',60],['Bismack Biyombo','C',63]],
-TOR:[['Scottie Barnes','SF',87],['RJ Barrett','SF',80],['Immanuel Quickley','PG',78],['Jakob Poeltl','C',78],['Gradey Dick','SG',74],['Ochai Agbaji','SG',71],['Bruce Brown','SG',74],['Chris Boucher','PF',72],['Jonathan Mogbo','PF',68],["Ja'Kobe Walter",'SG',69],['Kelly Olynyk','C',74],['Jamal Shead','PG',64],['Jamison Battle','SF',62],['Garrett Temple','SG',66],['Ulrich Chomche','C',58]],
-UTA:[['Lauri Markkanen','PF',84],['Walker Kessler','C',79],['Collin Sexton','SG',77],['John Collins','PF',76],['Keyonte George','PG',75],['Taylor Hendricks','PF',70],['Isaiah Collier','PG',68],['Kyle Filipowski','C',69],['Svi Mykhailiuk','SF',66],['Brice Sensabaugh','SF',67],['Cody Williams','SF',66],['Micah Potter','C',61],['Oscar Tshiebwe','C',62],['Johnny Juzang','SG',65],['Cody Zeller','C',60]],
-WAS:[['Jordan Poole','SG',78],['Bilal Coulibaly','SF',76],['Alex Sarr','C',75],['Bub Carrington','PG',72],['Corey Kispert','SF',73],['Kyshawn George','SF',70],['Marvin Bagley III','PF',71],['Richaun Holmes','C',68],['Anthony Gill','PF',65],['Tristan Vukcevic','C',66],['Justin Champagnie','SF',64],['Jamir Watkins','SG',62],['Will Riley','SF',61],['AJ Johnson','PG',63],['Trey Jemison','C',58]]
+ATL:[['Trae Young','PG',90],['Jalen Johnson','SF',85],['Dyson Daniels','SG',82],['Onyeka Okongwu','C',83],['Zaccharie Risacher','SF',77],['Clint Capela','C',78],['Vit Krejci','SF',73],['Georges Niang','PF',74],['Terance Mann','SG',75],['Kobe Bufkin','PG',70],['Luke Kennard','SG',73],['Larry Nance Jr.','PF',72],['Dominick Barlow','PF',64],['Keaton Wallace','PG',63],['Mouhamed Gueye','PF',65],['Seth Lundy','SG',58],['Nikola Djurisic','PF',57]],
+BOS:[['Jayson Tatum','SF',96],['Jaylen Brown','SG',91],['Kristaps Porzingis','C',87],['Derrick White','PG',85],['Jrue Holiday','PG',84],['Al Horford','C',79],['Payton Pritchard','PG',78],['Sam Hauser','SF',74],['Luke Kornet','C',72],['Neemias Queta','C',70],['Jordan Walsh','SF',67],['Baylor Scheierman','SG',68],['JD Davison','PG',64],['Xavier Tillman','C',69],['Anton Watson','PF',63],['Amari Williams','C',60],['RayJ Dennis','PG',57]],
+BKN:[['Cam Thomas','SG',82],['Nic Claxton','C',80],['Cameron Johnson','SF',78],['Ben Simmons','PG',74],['Dennis Schroder','PG',76],['Dorian Finney-Smith','PF',75],["Day'Ron Sharpe",'C',73],['Noah Clowney','PF',71],['Keon Johnson','SG',68],['Trendon Watford','PF',70],['De\'Anthony Melton','SG',70],['Ziaire Williams','SF',69],['Tyson Etienne','PG',62],['Jalen Wilson','SF',68],['Tosan Evbuomwan','PF',61],['Maxwell Lewis','SF',59],['Tyrese Martin','SG',58]],
+CHA:[['LaMelo Ball','PG',89],['Brandon Miller','SF',82],['Miles Bridges','PF',81],['Mark Williams','C',79],['Josh Green','SG',74],['Nick Richards','C',73],['Grant Williams','PF',74],['Tre Mann','PG',72],['Vasilije Micic','PG',70],['KJ Simpson','PG',65],['Moussa Diabate','PF',66],['Cody Martin','SF',71],['Damion Baugh','PG',64],['Tidjane Salaun','PF',69],['Reggie Jackson','PG',68],['Frank Ntilikina','PG',64],['DaQuan Jeffries','SF',58]],
+CHI:[['Zach LaVine','SG',85],['Coby White','PG',82],['Nikola Vucevic','C',82],['Josh Giddey','PG',80],['Patrick Williams','PF',76],['Ayo Dosunmu','SG',74],['Matas Buzelis','PF',73],['Torrey Craig','SF',70],['Jevon Carter','PG',68],['Julian Phillips','SF',67],['Kevin Huerter','SG',73],['Jalen Smith','PF',70],['Dalen Terry','SG',67],['Talen Horton-Tucker','SG',69],['Zach Collins','C',68],['Chris Duarte','SG',60],['Adama Sanogo','C',59]],
+CLE:[['Donovan Mitchell','SG',94],['Darius Garland','PG',87],['Evan Mobley','PF',88],['Jarrett Allen','C',85],['Max Strus','SF',78],['Isaac Okoro','SF',75],['Caris LeVert','SG',76],['Ty Jerome','PG',74],['Dean Wade','PF',71],['Craig Porter Jr.','PG',66],['De\'Andre Hunter','SF',78],['Sam Merrill','SG',71],['Emoni Bates','SF',64],['Nae\'Qwan Tomlin','PF',63],['Javonte Green','SF',66],['Jaylon Tyson','SF',63],['Luke Travers','SF',58]],
+DAL:[['Kyrie Irving','PG',91],['Anthony Davis','PF',93],['Klay Thompson','SG',82],['Daniel Gafford','C',80],['P.J. Washington','PF',78],['Dereck Lively II','C',77],['Naji Marshall','SF',74],['Spencer Dinwiddie','PG',73],['Dwight Powell','C',68],['Max Christie','SG',72],['Caleb Martin','SF',74],['A.J. Lawson','SG',65],['Brandon Williams','PG',61],['Olivier-Maxence Prosper','PF',66],['Kessler Edwards','SF',65],['Jaden Hardy','SG',64],['Dante Exum','PG',61]],
+DEN:[['Nikola Jokic','C',98],['Jamal Murray','PG',88],['Michael Porter Jr.','SF',82],['Aaron Gordon','PF',83],['Christian Braun','SG',78],['Russell Westbrook','PG',79],['Peyton Watson','SF',74],['Zeke Nnaji','PF',70],['DaRon Holmes II','PF',72],['Julian Strawther','SG',71],['Dario Saric','PF',71],['Vlatko Cancar','SF',68],['Jalen Pickett','PG',65],['Hunter Tyson','SF',64],['Trey Alexander','SG',63],['Tamar Bates','SG',58],['DeAndre Jordan','C',60]],
+DET:[['Cade Cunningham','PG',89],['Jalen Duren','C',82],['Tobias Harris','SF',79],['Ausar Thompson','SF',78],['Jaden Ivey','SG',79],['Malik Beasley','SG',76],['Isaiah Stewart','C',76],['Tim Hardaway Jr.','SG',74],['Ron Holland','SF',71],['Marcus Sasser','PG',68],['Simone Fontecchio','SF',71],['Paul Reed','PF',68],['Daniss Jenkins','PG',60],['Bobi Klintman','PF',63],['Cole Swider','SF',61],['Ron Harper Jr.','SF',58],['Tolu Smith','C',57]],
+GSW:[['Stephen Curry','PG',96],['Jimmy Butler','SF',88],['Draymond Green','PF',84],['Jonathan Kuminga','SF',81],['Andrew Wiggins','SF',79],['Buddy Hield','SG',78],['Brandin Podziemski','PG',77],['Moses Moody','SG',74],['Gary Payton II','SG',73],['Quinten Post','C',68],['Trayce Jackson-Davis','C',74],['Kyle Anderson','SF',71],['Gui Santos','SF',64],['Jackson Rowe','PF',60],['Pat Spencer','PG',59],['Reece Beekman','PG',59],['Yuri Collins','PG',56]],
+HOU:[['Alperen Sengun','C',87],['Jalen Green','SG',82],['Fred VanVleet','PG',82],['Amen Thompson','SF',81],['Jabari Smith Jr.','PF',79],['Dillon Brooks','SF',78],['Tari Eason','PF',76],['Steven Adams','C',74],['Cam Whitmore','SF',75],['Reed Sheppard','PG',72],['Jae\'Sean Tate','SF',71],['Aaron Holiday','PG',69],['Josh Okogie','SG',68],['N\'Faly Dante','C',64],['JT Thor','PF',63],['Boban Marjanovic','C',64],['David Roddy','PF',61]],
+IND:[['Tyrese Haliburton','PG',89],['Pascal Siakam','PF',87],['Myles Turner','C',82],['Bennedict Mathurin','SG',80],['Andrew Nembhard','PG',78],['Aaron Nesmith','SF',76],['Obi Toppin','PF',75],["T.J. McConnell",'PG',74],['Isaiah Jackson','C',72],['Ben Sheppard','SG',68],['James Wiseman','C',68],['Enrique Freeman','PF',63],['Johnny Furphy','SF',62],['Tony Bradley','C',61],['Quenton Jackson','PG',60],['Kendall Brown','SF',58],['Isaiah Wong','SG',57]],
+LAC:[['Kawhi Leonard','SF',91],['James Harden','PG',87],['Ivica Zubac','C',82],['Norman Powell','SG',80],['Bogdan Bogdanovic','SG',78],['Derrick Jones Jr.','SF',76],['Kris Dunn','PG',74],['Nicolas Batum','SF',73],['Amir Coffey','SG',71],['Drew Eubanks','C',68],['Jahmi\'us Ramsey','SG',64],['Jordan Miller','SF',63],['Cam Christie','SG',61],['Trentyn Flowers','SF',62],['Emanuel Miller','SF',60],['Kobe Brown','PF',60],['P.J. Tucker','PF',58]],
+LAL:[['Luka Doncic','PG',96],['LeBron James','SF',94],['Austin Reaves','SG',83],['Deandre Ayton','C',80],['Rui Hachimura','PF',78],['Dalton Knecht','SG',74],['Jarred Vanderbilt','PF',73],['Jaxson Hayes','C',73],['Gabe Vincent','PG',72],['Jordan Goodwin','PG',68],['Evil LeBron James','SF',99],['Christian Wood','C',69],['Jalen Hood-Schifino','PG',64],['Cam Reddish','SF',66],['Bronny James','PG',62],['Maxi Kleber','PF',67],['Alex Len','C',62],['Jalen Bridges','SF',56]],
+MEM:[['Ja Morant','PG',90],['Jaren Jackson Jr.','PF',87],['Desmond Bane','SG',85],['Marcus Smart','PG',79],['Santi Aldama','PF',76],['GG Jackson','SF',76],['Brandon Clarke','PF',75],['Zach Edey','C',74],['Scotty Pippen Jr.','PG',71],['Vince Williams Jr.','SF',70],['John Konchar','SF',69],['Jay Huff','C',63],['Yuki Kawamura','PG',60],['Jaylen Wells','SG',68],['Cedric Coward','SF',64],['Jermaine Samuels Jr.','SF',56],['Javon Small','PG',55]],
+MIA:[['Bam Adebayo','C',88],['Tyler Herro','SG',85],['Terry Rozier','PG',78],['Jaime Jaquez Jr.','SF',76],["Kel'el Ware",'C',76],['Duncan Robinson','SF',75],['Nikola Jovic','SF',74],['Davion Mitchell','PG',72],['Pelle Larsson','SG',70],['Haywood Highsmith','SF',68],['Alec Burks','SG',69],['Dru Smith','PG',64],['Josh Christopher','SG',63],['Keshad Johnson','SF',61],['Isaiah Stevens','PG',60],['Thomas Bryant','C',63],['Boo Buie','PG',58]],
+MIL:[['Giannis Antetokounmpo','PF',97],['Damian Lillard','PG',89],['Brook Lopez','C',79],['Khris Middleton','SF',79],['Kyle Kuzma','SF',76],['Bobby Portis','PF',77],['Gary Trent Jr.','SG',74],['AJ Green','SG',71],['Andre Jackson Jr.','SF',70],['Ryan Rollins','PG',68],['Taurean Prince','SF',70],['Chris Livingston','SF',62],['Tyler Smith','PF',61],['MarJon Beauchamp','SF',63],['Jamaree Bouyea','PG',60],['Pat Connaughton','SF',67],['Lindell Wigginton','PG',57]],
+MIN:[['Anthony Edwards','SG',94],['Rudy Gobert','C',85],['Julius Randle','PF',82],['Jaden McDaniels','SF',79],['Naz Reid','C',78],['Donte DiVincenzo','SG',77],['Mike Conley','PG',75],['Nickeil Alexander-Walker','SG',74],['Terrence Shannon Jr.','SG',71],['Rob Dillingham','PG',70],['Josh Minott','SF',63],['Luka Garza','C',68],['Leonard Miller','PF',62],['Jaylen Clark','SG',64],['Bones Hyland','SG',63],['Wendell Moore Jr.','SG',60],['Daishen Nix','PG',56]],
+NOP:[['Zion Williamson','PF',87],['Brandon Ingram','SF',85],['Dejounte Murray','PG',82],["CJ McCollum",'SG',79],['Trey Murphy III','SF',78],['Herbert Jones','SF',76],['Yves Missi','C',73],['Jose Alvarado','PG',72],['Jordan Hawkins','SG',71],['Jeremiah Fears','PG',68],['Karlo Matkovic','C',64],['Antonio Reeves','SG',67],['Javon Freeman-Liberty','PG',62],['Kevon Looney','C',71],['Jared Butler','PG',61],['Micah Peavy','SF',57],['Lester Quinones','SG',56]],
+NYK:[['Jalen Brunson','PG',92],['Karl-Anthony Towns','C',89],['Mikal Bridges','SF',83],["OG Anunoby",'SF',82],['Josh Hart','SG',78],['Mitchell Robinson','C',75],['Miles McBride','PG',73],['Precious Achiuwa','PF',71],['Landry Shamet','SG',70],['Jericho Sims','C',66],['Cameron Payne','PG',68],['Pacome Dadiet','SF',62],['Ariel Hukporti','C',64],['Tyler Kolek','PG',61],['Kevin McCullar Jr.','SF',60],['Jacob Toppin','PF',56],['Moussa Cisse','C',55]],
+OKC:[['Shai Gilgeous-Alexander','PG',97],['Jalen Williams','SF',86],['Chet Holmgren','C',87],['Isaiah Hartenstein','C',79],['Alex Caruso','SG',78],['Luguentz Dort','SG',78],['Cason Wallace','PG',76],['Aaron Wiggins','SG',75],['Kenrich Williams','SF',72],['Ajay Mitchell','PG',70],['Dillon Jones','SF',64],['Branden Carlson','C',60],['Adam Flagler','PG',61],['Ousmane Dieng','SF',66],['Nikola Topic','PG',65],['Jaylin Williams','C',63],['Alex Ducas','SF',54]],
+ORL:[['Paolo Banchero','PF',89],['Franz Wagner','SF',87],['Jalen Suggs','PG',80],['Wendell Carter Jr.','C',78],['Jonathan Isaac','PF',76],['Cole Anthony','PG',74],['Anthony Black','PG',73],['Goga Bitadze','C',70],['Tristan da Silva','SF',71],['Moritz Wagner','C',70],['Jett Howard','SF',66],['Caleb Houstan','SF',64],['Braxton Key','PF',61],['Trevelin Queen','SG',62],['Gary Harris','SG',73],['Chuma Okeke','PF',67],['Colin Castleton','C',56]],
+PHI:[['Joel Embiid','C',93],['Tyrese Maxey','PG',89],['Paul George','SF',83],['Kelly Oubre Jr.','SF',76],['Jared McCain','SG',75],['Quentin Grimes','SG',74],['Andre Drummond','C',73],['Guerschon Yabusele','PF',72],['Eric Gordon','SG',70],['Justin Edwards','SF',68],['Jeff Dowtin','PG',60],['Adem Bona','C',67],['Ricky Council IV','SG',65],['KJ Martin','PF',66],['Jared Rhoden','SF',61],['Jamal Cain','SF',56],['Michael Foster Jr.','PF',58]],
+PHX:[['Kevin Durant','SF',96],['Devin Booker','SG',91],['Bradley Beal','SG',82],['Grayson Allen','SG',78],['Jusuf Nurkic','C',76],["Royce O'Neale",'PF',74],['Ryan Dunn','SF',71],['Collin Gillespie','PG',68],['Oso Ighodaro','C',66],['Monte Morris','PG',67],['Damion Lee','SG',65],['Tyus Jones','PG',76],['Bol Bol','C',68],['Bruno Fernando','C',64],['TyTy Washington','PG',61],['Isaiah Mobley','PF',58],['Malachi Flynn','PG',61]],
+POR:[['Deni Avdija','SF',80],['Anfernee Simons','SG',81],['Scoot Henderson','PG',79],['Shaedon Sharpe','SG',77],['Jerami Grant','PF',78],['Donovan Clingan','C',75],['Toumani Camara','SF',74],['Robert Williams III','C',72],['Matisse Thybulle','SG',71],['Duop Reath','C',65],['Kris Murray','SF',64],['Rayan Rupert','SF',63],['Jabari Walker','PF',63],['Sidy Cissoko','SF',61],['Justin Minaya','PF',60],['Ibou Badji','C',55],['Drew Timme','C',57]],
+SAC:[['Domantas Sabonis','C',87],['DeMar DeRozan','SF',84],['Malik Monk','SG',80],['Keegan Murray','PF',78],['Keon Ellis','SG',72],['Trey Lyles','PF',68],['Doug McDermott','SF',69],['Devin Carter','PG',70],['Jake LaRavia','SF',71],['Maxime Raynaud','C',66],['Orlando Robinson','C',63],['Isaac Jones','PF',61],['Colby Jones','SG',60],['Nique Clifford','SG',62],['JaVale McGee','C',64],['Filip Petrusev','C',58],['Isaiah Crawford','SF',55]],
+SAS:[['Victor Wembanyama','C',95],["De'Aaron Fox",'PG',88],['Devin Vassell','SG',81],['Stephon Castle','SG',79],['Chris Paul','PG',77],['Harrison Barnes','SF',76],['Julian Champagnie','SF',73],['Keldon Johnson','SF',75],['Jeremy Sochan','PF',76],['Charles Bassey','C',65],['Malaki Branham','SG',68],['Sandro Mamukelashvili','PF',69],['Blake Wesley','SG',62],['David Duke Jr.','PG',60],['Bismack Biyombo','C',63],['Harrison Ingram','SF',58],['Morris Udeze','PF',56]],
+TOR:[['Scottie Barnes','SF',87],['RJ Barrett','SF',80],['Immanuel Quickley','PG',78],['Jakob Poeltl','C',78],['Gradey Dick','SG',74],['Ochai Agbaji','SG',71],['Bruce Brown','SG',74],['Chris Boucher','PF',72],['Jonathan Mogbo','PF',68],["Ja'Kobe Walter",'SG',69],['Kelly Olynyk','C',74],['Jamal Shead','PG',64],['Jamison Battle','SF',62],['Garrett Temple','SG',66],['Ulrich Chomche','C',58],['Kennedy Chandler','PG',57],['David Jones Garcia','SF',55]],
+UTA:[['Lauri Markkanen','PF',84],['Walker Kessler','C',79],['Collin Sexton','SG',77],['John Collins','PF',76],['Keyonte George','PG',75],['Taylor Hendricks','PF',70],['Isaiah Collier','PG',68],['Kyle Filipowski','C',69],['Svi Mykhailiuk','SF',66],['Brice Sensabaugh','SF',67],['Cody Williams','SF',66],['Micah Potter','C',61],['Oscar Tshiebwe','C',62],['Johnny Juzang','SG',65],['Cody Zeller','C',60],['Walter Clayton Jr.','PG',59],['Elijah Harkless','SG',55]],
+WAS:[['Jordan Poole','SG',78],['Bilal Coulibaly','SF',76],['Alex Sarr','C',75],['Bub Carrington','PG',72],['Corey Kispert','SF',73],['Kyshawn George','SF',70],['Marvin Bagley III','PF',71],['Richaun Holmes','C',68],['Anthony Gill','PF',65],['Tristan Vukcevic','C',66],['Justin Champagnie','SF',64],['Jamir Watkins','SG',62],['Will Riley','SF',61],['AJ Johnson','PG',63],['Trey Jemison','C',58],['Aaron Estrada','PG',54],['Johnny Davis','SG',60]]
 };
 
 /* ---------- Build full player list with generated attributes ---------- */
@@ -794,13 +827,17 @@ function buildPlayers(){
 const PLAYERS = buildPlayers();
 const PLAYERS_BY_ID = Object.fromEntries(PLAYERS.map(p=>[p.id,p]));
 const TEAMS_BY_ID = Object.fromEntries(TEAMS.map(t=>[t.id,t]));
+function getPlayer(id){
+  if(PLAYERS_BY_ID[id]) return PLAYERS_BY_ID[id];
+  return (state.customPlayers||[]).find(p=>p.id===id);
+}
 
 /* ============================= STATE ============================= */
 const SAVE_KEY = 'hoop_packs_save_v1';
 let state = loadState();
 function defaultState(){
   return {coins:5000, collection:{}, roster:[null,null,null,null,null], lastDaily:0, wins:0, losses:0, leagueConf:'East', league:null,
-    badgeInventory:{}, equippedBadges:{}, perks:{}, career:null};
+    badgeInventory:{}, equippedBadges:{}, perks:{}, career:null, customPlayers:[]};
 }
 function loadState(){
   try{
@@ -832,7 +869,7 @@ function switchTab(view){
   document.getElementById('view-'+view).classList.add('active');
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
   if(view==='collection') renderCollection();
-  if(view==='roster') renderRoster();
+  if(view==='roster'){ renderRoster(); renderCustomCreator(); renderCustomPlayersList(); }
   if(view==='play') renderPlay();
   if(view==='shop'){ renderShop(); renderBadgeShop(); renderPerkShop(); renderEquipUI(); }
   if(view==='league') renderLeague();
@@ -994,7 +1031,7 @@ function renderEquipSlots(){
   const playerId = sel.value;
   const wrap = document.getElementById('equipSlotsWrap');
   if(!playerId){ wrap.innerHTML=''; return; }
-  const player = PLAYERS_BY_ID[playerId];
+  const player = getPlayer(playerId);
   const equipped = rawEquippedSlots(playerId);
   let html = `<div class="equip-slots-row">`;
   for(let i=0;i<BADGE_SLOTS_PER_PLAYER;i++){
@@ -1156,7 +1193,7 @@ function renderCollection(){
   const teamFilter = document.getElementById('filterTeam').value;
   const rarityFilter = document.getElementById('filterRarity').value;
   const sortBy = document.getElementById('sortBy').value;
-  let owned = ownedIds().map(id=>PLAYERS_BY_ID[id]).filter(Boolean);
+  let owned = ownedIds().map(id=>getPlayer(id)).filter(Boolean);
   if(teamFilter) owned = owned.filter(p=>p.team===teamFilter);
   if(rarityFilter) owned = owned.filter(p=>p.rarity===rarityFilter);
   if(sortBy==='ovr') owned.sort((a,b)=>b.ovr-a.ovr);
@@ -1174,12 +1211,12 @@ let pickingSlot = null;
 function renderRoster(){
   const wrap = document.getElementById('rosterSlots');
   wrap.innerHTML = state.roster.map((id,i)=>{
-    if(!id || !PLAYERS_BY_ID[id]) return `<div class="slot" onclick="openRosterPicker(${i})">+ Add<br>Player</div>`;
-    const p = PLAYERS_BY_ID[id];
+    if(!id || !getPlayer(id)) return `<div class="slot" onclick="openRosterPicker(${i})">+ Add<br>Player</div>`;
+    const p = getPlayer(id);
     return `<div class="slot filled">${cardHTML(p)}<div class="remove-x" onclick="event.stopPropagation();removeFromRoster(${i})">✕</div></div>`;
   }).join('');
-  const filled = state.roster.filter(id=>id && PLAYERS_BY_ID[id]);
-  const rating = filled.length ? Math.round(filled.reduce((s,id)=>s+effOvr(PLAYERS_BY_ID[id]),0)/filled.length) : null;
+  const filled = state.roster.filter(id=>id && getPlayer(id));
+  const rating = filled.length ? Math.round(filled.reduce((s,id)=>s+effOvr(getPlayer(id)),0)/filled.length) : null;
   document.getElementById('rosterRatingText').textContent = rating ? `${rating} OVR (${filled.length}/5 filled)` : `Need players (${filled.length}/5 filled)`;
 }
 function openRosterPicker(slotIdx){
@@ -1187,7 +1224,7 @@ function openRosterPicker(slotIdx){
   const panel = document.getElementById('rosterPickerPanel');
   const grid = document.getElementById('rosterPickerGrid');
   const already = new Set(state.roster.filter(Boolean));
-  const owned = ownedIds().map(id=>PLAYERS_BY_ID[id]).filter(p=>p && !already.has(p.id)).sort((a,b)=>b.ovr-a.ovr);
+  const owned = ownedIds().map(id=>getPlayer(id)).filter(p=>p && !already.has(p.id)).sort((a,b)=>b.ovr-a.ovr);
   if(owned.length===0){
     grid.innerHTML = `<div class="empty-msg" style="grid-column:1/-1;">No available players — open some packs first!</div>`;
   }else{
@@ -1220,7 +1257,9 @@ function pickRandomOpponentTeam(){
     .map(p=>({name:p[0], pos:p[1], ovr:p[2]}));
   return {team:t, lineup};
 }
+let opponentLocked = false;
 function pickOpponent(){
+  if(opponentLocked) return;
   const {team, lineup} = pickRandomOpponentTeam();
   cpuTeam = team;
   cpuLineup = lineup;
@@ -1230,10 +1269,11 @@ function pickOpponent(){
   const badge = document.getElementById('cpuBadge');
   badge.style.background = `linear-gradient(135deg, ${team.colors[0]}, ${team.colors[1]})`;
   badge.textContent = team.id;
+  opponentLocked = true;
   renderPlay();
 }
 function myLineup(){
-  return state.roster.filter(id=>id && PLAYERS_BY_ID[id]).map(id=>PLAYERS_BY_ID[id]);
+  return state.roster.filter(id=>id && getPlayer(id)).map(id=>getPlayer(id));
 }
 function renderPlay(){
   const lineup = myLineup();
@@ -1241,6 +1281,9 @@ function renderPlay(){
   document.getElementById('myRatingText').textContent = rating ? rating+' OVR' : 'Roster incomplete';
   const btn = document.getElementById('playBtn');
   const povBtn = document.getElementById('povBtn');
+  const findBtn = document.getElementById('findOpponentBtn');
+  findBtn.disabled = opponentLocked;
+  findBtn.textContent = opponentLocked ? '🔒 Finish this game to switch opponents' : '🔀 Find Opponent';
   if(lineup.length<5){
     btn.disabled = true;
     btn.textContent = 'Complete your roster to play (5 players)';
@@ -1305,6 +1348,10 @@ function finishGame(myTotal, oppTotal, lineup){
   const reward = coinRewardFor(win);
   state.coins += reward;
   if(win) state.wins++; else state.losses++;
+  opponentLocked = false;
+  const findBtn = document.getElementById('findOpponentBtn');
+  findBtn.disabled = false;
+  findBtn.textContent = '🔀 Find Opponent';
   saveState(); refreshTopbar();
 
   const pts = allocateStat(lineup, myTotal, 'shooting');
@@ -1367,7 +1414,7 @@ function startPovQuarter(){
 function startPov(playerId){
   closePovPicker();
   const lineup = myLineup();
-  const controlled = PLAYERS_BY_ID[playerId];
+  const controlled = getPlayer(playerId);
   const support = lineup.filter(p=>p.id!==playerId);
   const supportRating = withHomecourt(Math.round(support.reduce((s,p)=>s+effOvr(p),0)/support.length));
   const oppRating = withIronwall(Math.round(cpuLineup.reduce((s,p)=>s+p.ovr,0)/cpuLineup.length));
@@ -1469,6 +1516,10 @@ function closePovModalAndShowResults(){
   const reward = coinRewardFor(win);
   state.coins += reward;
   if(win) state.wins++; else state.losses++;
+  opponentLocked = false;
+  const findBtn = document.getElementById('findOpponentBtn');
+  findBtn.disabled = false;
+  findBtn.textContent = '🔀 Find Opponent';
   saveState(); refreshTopbar();
 
   const teamPtsForSupport = Math.max(0, povState.myScore - povState.userPoints);
@@ -1935,6 +1986,102 @@ function closeCareerModalAndShowResults(){
   if(levelResult.leveledUp>0){
     showToast(levelResult.stageChanged ? `Leveled up to Level ${c.level}! You're now a ${levelResult.newStage}!` : `Leveled up to Level ${c.level}!`);
   }
+}
+
+/* ============================= CUSTOM PLAYER CREATOR ============================= */
+const CUSTOM_TIERS = {
+  Bronze:{label:'Bronze', icon:'🥉', ovr:68, desc:'Solid rotation player (~60-74 OVR)'},
+  Silver:{label:'Silver', icon:'🥈', ovr:80, desc:'Quality starter (~75-84 OVR)'},
+  Gold:{label:'Gold', icon:'🥇', ovr:88, desc:'All-Star caliber (~85-91 OVR)'},
+  Diamond:{label:'Diamond', icon:'💎', ovr:95, desc:'Superstar (~92-99 OVR)'}
+};
+let selectedCustomArchetype = 'sharpshooter';
+let selectedCustomTier = 'Silver';
+
+function newCustomAttributes(pos, archetypeKey, targetOvr){
+  const arche = CAREER_ARCHETYPES[archetypeKey];
+  const bias = POS_BIAS[pos] || POS_BIAS.SF;
+  const attrs = {};
+  ['shooting','defense','speed','rebounding','playmaking'].forEach(k=>{
+    let v = targetOvr + Math.round(bias[k]*0.4);
+    v += (k===arche.primary) ? 8 : -2;
+    attrs[k] = clamp(v, 35, 99);
+  });
+  return attrs;
+}
+function populateCustomTeamSelect(){
+  const sel = document.getElementById('customTeamSelect');
+  if(sel.options.length===0){
+    sel.innerHTML = TEAMS.map(t=>`<option value="${t.id}">${t.city} ${t.name}</option>`).join('');
+  }
+}
+function renderCustomArchetypePicker(){
+  const grid = document.getElementById('customArchetypePicker');
+  grid.innerHTML = Object.entries(CAREER_ARCHETYPES).map(([key,a])=>`
+    <div class="badge-card archetype-card ${selectedCustomArchetype===key?'selected':''}" onclick="selectCustomArchetype('${key}')">
+      <div class="bicon">${a.icon}</div><h4>${a.label}</h4><div class="desc">${a.desc}</div>
+    </div>`).join('');
+}
+function selectCustomArchetype(key){ selectedCustomArchetype = key; renderCustomArchetypePicker(); }
+function renderCustomTierPicker(){
+  const grid = document.getElementById('customTierPicker');
+  grid.innerHTML = Object.entries(CUSTOM_TIERS).map(([key,t])=>`
+    <div class="badge-card tier-card ${selectedCustomTier===key?'selected':''}" onclick="selectCustomTier('${key}')">
+      <div class="bicon">${t.icon}</div><h4>${t.label}</h4><div class="desc">${t.desc}</div>
+    </div>`).join('');
+}
+function selectCustomTier(key){ selectedCustomTier = key; renderCustomTierPicker(); }
+function renderCustomCreator(){
+  populateCustomTeamSelect();
+  renderCustomArchetypePicker();
+  renderCustomTierPicker();
+}
+function createCustomPlayer(){
+  const nameInput = document.getElementById('customNameInput');
+  const name = nameInput.value.trim();
+  if(!name){ showToast('Enter a name for your player first!'); return; }
+  const team = document.getElementById('customTeamSelect').value;
+  const pos = document.getElementById('customPosSelect').value;
+  const tier = CUSTOM_TIERS[selectedCustomTier];
+  const attrs = newCustomAttributes(pos, selectedCustomArchetype, tier.ovr);
+  const ovr = clamp(Math.round(Object.values(attrs).reduce((a,b)=>a+b,0)/5), 35, 99);
+  const id = 'custom-'+Date.now()+'-'+Math.floor(Math.random()*10000);
+  const player = {id, name, pos, ovr, team, rarity: tierForOvr(ovr), evil:false, isCustom:true, archetype:selectedCustomArchetype, ...attrs};
+  state.customPlayers.push(player);
+  state.collection[id] = 1;
+  saveState();
+  nameInput.value = '';
+  showToast(`${name} has joined your Binder!`);
+  renderCustomPlayersList();
+}
+function renderCustomPlayersList(){
+  const wrap = document.getElementById('customPlayersListWrap');
+  const list = state.customPlayers || [];
+  if(list.length===0){ wrap.innerHTML = ''; return; }
+  wrap.innerHTML = `<h3 style="font-size:14px;margin:14px 0 8px;">My Created Players</h3>` + list.map(p=>{
+    const team = TEAMS_BY_ID[p.team];
+    const arche = CAREER_ARCHETYPES[p.archetype];
+    return `<div class="custom-player-row">
+      <div class="mini-badge" style="background:linear-gradient(135deg,${team.colors[0]},${team.colors[1]});width:32px;height:32px;font-size:10px;flex-shrink:0;">${team.id}</div>
+      <div class="cp-info"><b>${p.name}</b> — ${p.pos}, ${effOvr(p)} OVR<div class="cp-meta">${arche?arche.label:''} · ${p.rarity}</div></div>
+      <button class="release" onclick="releaseCustomPlayer('${p.id}')">Release</button>
+    </div>`;
+  }).join('');
+}
+function releaseCustomPlayer(id){
+  if(!confirm('Release this player? This removes them from your Binder and roster permanently.')) return;
+  state.customPlayers = (state.customPlayers||[]).filter(p=>p.id!==id);
+  delete state.collection[id];
+  state.roster = state.roster.map(rid=>rid===id?null:rid);
+  const equipped = state.equippedBadges[id];
+  if(equipped){
+    equipped.forEach(bk=>{ if(bk) state.badgeInventory[bk] = (state.badgeInventory[bk]||0)+1; });
+    delete state.equippedBadges[id];
+  }
+  saveState();
+  renderRoster();
+  renderCustomPlayersList();
+  showToast('Player released.');
 }
 
 /* ============================= INIT ============================= */
