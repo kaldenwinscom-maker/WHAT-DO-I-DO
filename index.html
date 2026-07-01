@@ -125,6 +125,14 @@
     padding:2px 6px; border-radius:6px; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,0.4);
   }
   .card .pos{position:absolute; top:8px; right:8px; font-size:10px; font-weight:800; color:rgba(255,255,255,0.85);}
+  .card .photo-wrap{flex:1; display:flex; align-items:center; justify-content:center; min-height:0;}
+  .card .photo-circle{
+    width:62%; aspect-ratio:1/1; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, rgba(255,255,255,0.28), rgba(255,255,255,0.08));
+    border:1px solid rgba(255,255,255,0.35);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .card .photo-circle svg{width:66%; height:66%; fill:rgba(255,255,255,0.95); filter:drop-shadow(0 2px 3px rgba(0,0,0,0.35));}
   .card .ovr{font-size:26px; font-weight:900; line-height:1; margin-top:2px;}
   .card .rarity-label{font-size:8.5px; letter-spacing:1.5px; text-transform:uppercase; opacity:0.85; font-weight:700;}
   .card .name{font-size:12px; font-weight:800; line-height:1.15; margin-top:4px;}
@@ -248,6 +256,15 @@
 </style>
 </head>
 <body>
+
+<svg style="position:absolute;width:0;height:0" aria-hidden="true">
+  <symbol id="playerSilhouette" viewBox="0 0 100 130">
+    <circle cx="52" cy="17" r="14"/>
+    <path d="M52 32 C36 34 30 56 32 79 L28 111 L41 113 L46 86 L52 100 L58 86 L63 113 L76 111 L72 79 C74 56 68 34 52 32 Z"/>
+    <path d="M33 46 C21 49 12 61 14 73 L21 71 C21 61 27 53 35 51 Z"/>
+    <circle cx="16" cy="83" r="8"/>
+  </symbol>
+</svg>
 
 <header class="topbar">
   <h1><span class="ball">🏀</span> Hoop Packs</h1>
@@ -563,6 +580,7 @@ function cardHTML(player, extra){
   return `<div class="card ${player.rarity}" style="background:${grad};">
     <div class="pos">${player.pos}</div>
     <div class="team-badge" style="background:rgba(0,0,0,0.35)">${team.id}</div>
+    <div class="photo-wrap"><div class="photo-circle"><svg viewBox="0 0 100 130"><use href="#playerSilhouette"/></svg></div></div>
     <div>
       <div class="ovr">${player.ovr}</div>
       <div class="rarity-label">${player.rarity}</div>
