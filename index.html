@@ -290,6 +290,19 @@
   @keyframes toastin{from{opacity:0; transform:translate(-50%,-8px);} to{opacity:1; transform:translate(-50%,0);}}
 
   .empty-msg{color:var(--muted); text-align:center; padding:30px 10px; font-size:13px;}
+
+  /* ---- POV mode ---- */
+  .pov-player-strip{font-size:12.5px; color:var(--muted); margin-bottom:4px;}
+  .pov-player-strip b{color:var(--text);}
+  .pov-log{
+    background:var(--panel2); border:1px solid var(--line); border-radius:10px;
+    padding:8px 10px; height:140px; overflow-y:auto; font-size:12.5px;
+    margin:10px 0; display:flex; flex-direction:column; gap:5px; text-align:left;
+  }
+  .pov-log .entry{color:var(--muted);}
+  .pov-log .entry.score{color:var(--good); font-weight:700;}
+  .pov-log .entry.miss{color:var(--bad);}
+  .pov-actions{display:flex; flex-direction:column; gap:8px;}
 </style>
 </head>
 <body>
@@ -415,6 +428,12 @@
         <div><div id="cpuScore">0</div><div class="q" id="quarterText">Q1</div></div>
       </div>
       <button class="primary" id="playBtn" onclick="startGame()" disabled>Complete your roster to play</button>
+      <button class="secondary" id="povBtn" style="width:100%;margin-top:8px;" onclick="openPovPicker()" disabled>🎮 Play POV — control a player yourself</button>
+    </div>
+    <div class="panel" id="povPickerPanel" style="display:none;">
+      <h3 style="margin-top:0;font-size:14px;">Choose who you want to control</h3>
+      <div class="card-grid" id="povPickerGrid"></div>
+      <button class="secondary" style="margin-top:10px;" onclick="closePovPicker()">Cancel</button>
     </div>
     <div class="panel" id="resultPanel" style="display:none;">
       <div class="result-banner" id="resultBanner"></div>
@@ -464,6 +483,27 @@
     <p class="hint" id="packModalHint">Tap the pack to open it!</p>
     <div class="reveal-grid" id="revealGrid"></div>
     <button class="primary" id="collectBtn" style="display:none;" onclick="closePackModal()">Collect &amp; Continue</button>
+  </div>
+</div>
+
+<!-- POV mode modal -->
+<div class="modal-overlay" id="povModal">
+  <div class="modal-box" style="max-width:480px;">
+    <span class="close-x" onclick="closePovModal()">✕</span>
+    <h2 id="povTitle" style="margin-top:0;">POV Mode</h2>
+    <div class="pov-player-strip" id="povPlayerStrip"></div>
+    <div class="scoreboard" style="margin:6px 0;">
+      <div><div id="povMyScore">0</div></div>
+      <div class="vs">-</div>
+      <div><div id="povOppScore">0</div><div class="q" id="povQuarterText">Q1</div></div>
+    </div>
+    <div class="pov-log" id="povLog"></div>
+    <div class="pov-actions" id="povActions">
+      <button class="secondary" onclick="povAction('jumper')">🎯 Pull-Up Jumper</button>
+      <button class="secondary" onclick="povAction('drive')">⚡ Drive to the Rim</button>
+      <button class="secondary" onclick="povAction('dish')">🤝 Dish to a Teammate</button>
+    </div>
+    <button class="primary" id="povDoneBtn" style="display:none;" onclick="closePovModalAndShowResults()">See Final Box Score</button>
   </div>
 </div>
 
@@ -848,18 +888,23 @@ function renderPlay(){
   const rating = lineup.length===5 ? Math.round(lineup.reduce((s,p)=>s+p.ovr,0)/5) : null;
   document.getElementById('myRatingText').textContent = rating ? rating+' OVR' : 'Roster incomplete';
   const btn = document.getElementById('playBtn');
+  const povBtn = document.getElementById('povBtn');
   if(lineup.length<5){
     btn.disabled = true;
     btn.textContent = 'Complete your roster to play (5 players)';
+    povBtn.disabled = true;
   }else if(!cpuTeam){
     btn.disabled = true;
     btn.textContent = 'Find an opponent first';
+    povBtn.disabled = true;
   }else{
     btn.disabled = false;
     btn.textContent = 'Tip Off 🏀';
+    povBtn.disabled = false;
   }
   document.getElementById('scoreboard').style.display='none';
   document.getElementById('resultPanel').style.display='none';
+  document.getElementById('povPickerPanel').style.display='none';
 }
 
 function simQuarter(myR, oppR){
@@ -927,6 +972,170 @@ function finishGame(myTotal, oppTotal, lineup){
   document.getElementById('resultPanel').style.display='block';
   document.getElementById('playBtn').disabled = false;
   document.getElementById('playBtn').textContent = 'Play Again 🏀';
+}
+
+/* ============================= POV MODE ============================= */
+let povState = null;
+function estimateDefense(pos, ovr){
+  const bias = POS_BIAS[pos] || POS_BIAS.SF;
+  return clamp(ovr + bias.defense, 35, 99);
+}
+function openPovPicker(){
+  const lineup = myLineup();
+  if(lineup.length<5 || !cpuTeam) return;
+  document.getElementById('povPickerPanel').style.display='block';
+  const grid = document.getElementById('povPickerGrid');
+  grid.innerHTML = lineup.map(p=>`<div onclick="startPov('${p.id}')">${cardHTML(p)}</div>`).join('');
+  document.getElementById('povPickerPanel').scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+function closePovPicker(){
+  document.getElementById('povPickerPanel').style.display='none';
+}
+function logPov(msg, cls){
+  const log = document.getElementById('povLog');
+  const div = document.createElement('div');
+  div.className = 'entry'+(cls?(' '+cls):'');
+  div.textContent = msg;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+function renderPovScoreboard(){
+  document.getElementById('povMyScore').textContent = povState.myScore;
+  document.getElementById('povOppScore').textContent = povState.oppScore;
+  document.getElementById('povQuarterText').textContent = `Q${povState.quarter} · ${povState.possessionsLeft} touches left`;
+}
+function startPovQuarter(){
+  if(!povState || povState.done) return;
+  const [supportPts, oppPts] = simQuarter(povState.supportRating, povState.oppRating);
+  povState.myScore += supportPts;
+  povState.oppScore += oppPts;
+  logPov(`— Q${povState.quarter} tips off — your bench and the ${cpuTeam.name} trade early buckets. —`);
+  renderPovScoreboard();
+}
+function startPov(playerId){
+  closePovPicker();
+  const lineup = myLineup();
+  const controlled = PLAYERS_BY_ID[playerId];
+  const support = lineup.filter(p=>p.id!==playerId);
+  const supportRating = Math.round(support.reduce((s,p)=>s+p.ovr,0)/support.length);
+  const oppRating = Math.round(cpuLineup.reduce((s,p)=>s+p.ovr,0)/cpuLineup.length);
+  const oppDefense = Math.round(cpuLineup.reduce((s,p)=>s+estimateDefense(p.pos,p.ovr),0)/cpuLineup.length);
+  povState = {
+    controlled, support, supportRating, oppRating, oppDefense,
+    quarter:1, possessionsLeft:3, possessionsPerQuarter:3,
+    myScore:0, oppScore:0, userPoints:0, userAssists:0, done:false, transitioning:false
+  };
+  document.getElementById('povTitle').textContent = `POV — ${controlled.name}`;
+  document.getElementById('povPlayerStrip').innerHTML = `Controlling <b>${controlled.name}</b> (${controlled.pos}, ${controlled.ovr} OVR) vs <b>${cpuTeam.city} ${cpuTeam.name}</b>. Make the calls on your possessions — everything else plays out automatically.`;
+  document.getElementById('povLog').innerHTML = '';
+  document.getElementById('povActions').style.display = 'flex';
+  document.getElementById('povDoneBtn').style.display = 'none';
+  document.getElementById('povModal').classList.add('open');
+  setPovButtonsEnabled(true);
+  startPovQuarter();
+}
+function closePovModal(){
+  document.getElementById('povModal').classList.remove('open');
+}
+function setPovButtonsEnabled(enabled){
+  document.querySelectorAll('#povActions button').forEach(b=>b.disabled = !enabled);
+}
+function povAction(type){
+  if(!povState || povState.done || povState.transitioning) return;
+  const p = povState.controlled;
+  const def = povState.oppDefense;
+  if(type==='jumper'){
+    const isThree = Math.random()<0.35;
+    const base = isThree?0.32:0.48;
+    const prob = clamp(base + (p.shooting-def)*0.006, 0.12, 0.85);
+    if(Math.random()<prob){
+      const pts = isThree?3:2;
+      povState.myScore += pts; povState.userPoints += pts;
+      logPov(`🎯 ${p.name} drills the ${isThree?'three-pointer':'jumper'}! +${pts}`, 'score');
+    }else{
+      logPov(`🎯 ${p.name}'s jumper rims out.`, 'miss');
+    }
+  }else if(type==='drive'){
+    const turnoverProb = clamp(0.14 - (p.speed-70)*0.0015, 0.04, 0.2);
+    if(Math.random()<turnoverProb){
+      logPov(`⚡ ${p.name} drives but travels — turnover!`, 'miss');
+    }else{
+      const prob = clamp(0.58 + (p.speed-def)*0.006, 0.25, 0.92);
+      if(Math.random()<prob){
+        const andOne = Math.random()<0.15;
+        const pts = andOne?3:2;
+        povState.myScore += pts; povState.userPoints += pts;
+        logPov(`⚡ ${p.name} attacks the rim${andOne?' and gets fouled — AND ONE!':'!'} +${pts}`, 'score');
+      }else{
+        logPov(`⚡ ${p.name} gets stuffed at the rim.`, 'miss');
+      }
+    }
+  }else if(type==='dish'){
+    const turnoverProb = clamp(0.12 - (p.playmaking-70)*0.0015, 0.04, 0.18);
+    if(Math.random()<turnoverProb){
+      logPov(`🤝 ${p.name}'s pass is picked off — turnover!`, 'miss');
+    }else{
+      const prob = clamp(0.55 + (p.playmaking-def)*0.006, 0.25, 0.92);
+      if(Math.random()<prob){
+        const pts = Math.random()<0.3 ? 3 : 2;
+        povState.myScore += pts; povState.userAssists += 1;
+        logPov(`🤝 ${p.name} finds a teammate wide open for the assist! +${pts}`, 'score');
+      }else{
+        logPov(`🤝 ${p.name}'s teammate can't finish the pass.`, 'miss');
+      }
+    }
+  }
+  povState.possessionsLeft--;
+  renderPovScoreboard();
+  if(povState.possessionsLeft<=0){
+    if(povState.quarter<4){
+      povState.transitioning = true;
+      setPovButtonsEnabled(false);
+      setTimeout(()=>{
+        if(!povState || povState.done) return;
+        povState.quarter++;
+        povState.possessionsLeft = povState.possessionsPerQuarter;
+        povState.transitioning = false;
+        startPovQuarter();
+        setPovButtonsEnabled(true);
+      }, 600);
+    }else{
+      finishPov();
+    }
+  }
+}
+function finishPov(){
+  povState.done = true;
+  document.getElementById('povActions').style.display = 'none';
+  document.getElementById('povDoneBtn').style.display = 'block';
+  logPov(`FINAL: You ${povState.myScore} - ${povState.oppScore} ${cpuTeam.name}`, povState.myScore>povState.oppScore?'score':'miss');
+}
+function closePovModalAndShowResults(){
+  document.getElementById('povModal').classList.remove('open');
+  const win = povState.myScore > povState.oppScore;
+  const reward = win ? 300 : 100;
+  state.coins += reward;
+  if(win) state.wins++; else state.losses++;
+  saveState(); refreshTopbar();
+
+  const teamPtsForSupport = Math.max(0, povState.myScore - povState.userPoints);
+  const pts = allocateStat(povState.support, teamPtsForSupport, 'shooting');
+  const reb = allocateStat(povState.support, 32 + Math.round(Math.random()*8), 'rebounding');
+  const ast = allocateStat(povState.support, 14 + Math.round(Math.random()*6), 'playmaking');
+
+  const banner = document.getElementById('resultBanner');
+  banner.className = 'result-banner ' + (win ? 'win':'loss');
+  banner.textContent = (win ? '🏆 VICTORY! ' : 'DEFEAT. ') + `${povState.myScore} - ${povState.oppScore}  (+${reward} coins)`;
+
+  const table = document.getElementById('boxscoreTable');
+  let rows = `<tr><th>Player</th><th>Pos</th><th>PTS</th><th>REB</th><th>AST</th></tr>`;
+  rows += `<tr class="${win?'win-row':''}"><td>${povState.controlled.name} (You)</td><td>${povState.controlled.pos}</td><td>${povState.userPoints}</td><td>0</td><td>${povState.userAssists}</td></tr>`;
+  povState.support.forEach((p,i)=>{
+    rows += `<tr class="${win?'win-row':''}"><td>${p.name}</td><td>${p.pos}</td><td>${pts[i]}</td><td>${reb[i]}</td><td>${ast[i]}</td></tr>`;
+  });
+  table.innerHTML = rows;
+  document.getElementById('resultPanel').style.display='block';
+  document.getElementById('resultPanel').scrollIntoView({behavior:'smooth', block:'nearest'});
 }
 
 /* ============================= LEAGUE ============================= */
