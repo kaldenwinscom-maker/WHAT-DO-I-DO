@@ -197,6 +197,29 @@
     font-weight:700; padding:6px 10px; border-radius:8px; cursor:pointer; font-size:11.5px;
   }
 
+  /* ---- Avatar ---- */
+  .avatar-circle{
+    width:34px; height:34px; border-radius:50%; background:var(--panel2);
+    border:1px solid var(--line); cursor:pointer; overflow:hidden; flex-shrink:0;
+  }
+  .avatar-circle svg, .badge-lg svg{width:100%; height:100%; display:block;}
+  .avatar-preview-wrap{display:flex; justify-content:center; margin-bottom:16px;}
+  .avatar-preview{
+    width:140px; height:140px; border-radius:50%; background:var(--panel2);
+    border:2px solid var(--line); overflow:hidden;
+  }
+  .avatar-option-group{margin-bottom:14px;}
+  .avatar-option-group label{font-size:12px; color:var(--muted); display:block; margin-bottom:6px;}
+  .swatch-row{display:flex; gap:8px; flex-wrap:wrap;}
+  .swatch{width:30px; height:30px; border-radius:50%; cursor:pointer; border:2px solid transparent;}
+  .swatch.selected{border-color:var(--accent2); box-shadow:0 0 0 2px rgba(255,122,26,0.35);}
+  .chip-row{display:flex; gap:8px; flex-wrap:wrap;}
+  .chip{
+    padding:7px 12px; border-radius:20px; background:var(--panel2); border:1px solid var(--line);
+    font-size:12px; font-weight:700; cursor:pointer; color:var(--text);
+  }
+  .chip.selected{background:rgba(255,122,26,0.16); border-color:var(--accent2); color:var(--accent2);}
+
   /* ---- Cards ---- */
   .card{
     width:100%; aspect-ratio:5/7; border-radius:12px; position:relative;
@@ -407,7 +430,10 @@
 </svg>
 
 <header class="topbar">
-  <h1><span class="ball">🏀</span> Hoop Packs</h1>
+  <div style="display:flex;align-items:center;gap:9px;">
+    <div class="avatar-circle" id="headerAvatarBtn" onclick="openAvatarModal()" title="Edit your avatar"></div>
+    <h1><span class="ball">🏀</span> Hoop Packs</h1>
+  </div>
   <div class="stats-pill">
     <span class="coin">🪙 <span id="coinCount">0</span></span>
     <span class="record" id="recordText">0-0</span>
@@ -556,7 +582,7 @@
     <h2 class="section-title">Play a Game</h2>
     <div class="panel">
       <div class="matchup" id="matchupBox">
-        <div class="team-side"><div class="badge-lg" style="background:#333">YOU</div><div class="tname">Your Squad</div><div class="trating" id="myRatingText">-- OVR</div></div>
+        <div class="team-side"><div class="badge-lg" id="youBadge" style="background:#333;padding:0;overflow:hidden;"></div><div class="tname">Your Squad</div><div class="trating" id="myRatingText">-- OVR</div></div>
         <div class="vs">VS</div>
         <div class="team-side"><div class="badge-lg" id="cpuBadge" style="background:#333">CPU</div><div class="tname" id="cpuName">Pick opponent</div><div class="trating" id="cpuRatingText">-- OVR</div></div>
       </div>
@@ -677,6 +703,36 @@
     <p class="hint" id="packModalHint">Tap the pack to open it!</p>
     <div class="reveal-grid" id="revealGrid"></div>
     <button class="primary" id="collectBtn" style="display:none;" onclick="closePackModal()">Collect &amp; Continue</button>
+  </div>
+</div>
+
+<!-- Avatar editor modal -->
+<div class="modal-overlay" id="avatarModal">
+  <div class="modal-box" style="max-width:420px;">
+    <span class="close-x" onclick="closeAvatarModal()">✕</span>
+    <h2 style="margin-top:0;">Build Your Avatar</h2>
+    <div class="avatar-preview-wrap"><div class="avatar-preview" id="avatarPreview"></div></div>
+    <div class="avatar-option-group">
+      <label>Skin Tone</label>
+      <div class="swatch-row" id="avatarSkinRow"></div>
+    </div>
+    <div class="avatar-option-group">
+      <label>Hairstyle</label>
+      <div class="chip-row" id="avatarHairRow"></div>
+    </div>
+    <div class="avatar-option-group">
+      <label>Hair Color</label>
+      <div class="swatch-row" id="avatarHairColorRow"></div>
+    </div>
+    <div class="avatar-option-group">
+      <label>Accessory</label>
+      <div class="chip-row" id="avatarAccessoryRow"></div>
+    </div>
+    <div class="avatar-option-group">
+      <label>Favorite Team (jersey colors)</label>
+      <select id="avatarTeamSelect" style="width:100%;" onchange="setAvatarField('team', this.value)"></select>
+    </div>
+    <button class="primary" onclick="saveAvatar()">Save Avatar</button>
   </div>
 </div>
 
@@ -837,7 +893,8 @@ const SAVE_KEY = 'hoop_packs_save_v1';
 let state = loadState();
 function defaultState(){
   return {coins:5000, collection:{}, roster:[null,null,null,null,null], lastDaily:0, wins:0, losses:0, leagueConf:'East', league:null,
-    badgeInventory:{}, equippedBadges:{}, perks:{}, career:null, customPlayers:[]};
+    badgeInventory:{}, equippedBadges:{}, perks:{}, career:null, customPlayers:[],
+    avatar:{skin:'#C68642', hair:'short', hairColor:'#2C1B18', accessory:'none', team:'LAL'}};
 }
 function loadState(){
   try{
@@ -2084,10 +2141,100 @@ function releaseCustomPlayer(id){
   showToast('Player released.');
 }
 
+/* ============================= AVATAR ============================= */
+const AVATAR_SKIN_TONES = ['#3B2417','#5C3A21','#8D5524','#C68642','#E0AC69','#F1C27D','#FFDBAC'];
+const AVATAR_HAIR_COLORS = ['#090806','#2C1B18','#4E3524','#A55728','#DEBA9D','#B89778','#E8E1E1'];
+const AVATAR_HAIR_STYLES = ['bald','short','curly','afro','long','mohawk'];
+const AVATAR_ACCESSORIES = ['none','headband','shades','chain'];
+
+function buildAvatarSVG(cfg){
+  const team = TEAMS_BY_ID[cfg.team] || TEAMS_BY_ID.LAL;
+  const jerseyFill = team.colors[0];
+  const accentColor = team.colors[1];
+  const skin = cfg.skin;
+  const hairColor = cfg.hairColor;
+  let svg = '';
+  svg += `<path d="M8 100 C8 78 26 68 50 68 C74 68 92 78 92 100 Z" fill="${jerseyFill}"/>`;
+  svg += `<rect x="42" y="58" width="16" height="14" rx="4" fill="${skin}"/>`;
+  if(cfg.hair==='afro'){
+    svg += `<circle cx="50" cy="38" r="30" fill="${hairColor}"/>`;
+  }else if(cfg.hair==='long'){
+    svg += `<path d="M18 40 Q18 75 26 82 L34 82 Q28 60 30 40 Z M82 40 Q82 75 74 82 L66 82 Q72 60 70 40 Z" fill="${hairColor}"/>`;
+  }
+  svg += `<circle cx="50" cy="38" r="24" fill="${skin}"/>`;
+  svg += `<circle cx="26" cy="40" r="5" fill="${skin}"/><circle cx="74" cy="40" r="5" fill="${skin}"/>`;
+  if(cfg.hair==='short' || cfg.hair==='long'){
+    svg += `<path d="M26 32 Q50 8 74 32 Q74 20 50 14 Q26 20 26 32 Z" fill="${hairColor}"/>`;
+  }else if(cfg.hair==='curly'){
+    svg += `<circle cx="30" cy="24" r="7" fill="${hairColor}"/><circle cx="42" cy="17" r="8" fill="${hairColor}"/><circle cx="58" cy="17" r="8" fill="${hairColor}"/><circle cx="70" cy="24" r="7" fill="${hairColor}"/>`;
+  }else if(cfg.hair==='mohawk'){
+    svg += `<path d="M45 6 L55 6 L52 30 L48 30 Z" fill="${hairColor}"/>`;
+  }
+  svg += `<ellipse cx="42" cy="40" rx="2.5" ry="3.5" fill="#1a1a1a"/><ellipse cx="58" cy="40" rx="2.5" ry="3.5" fill="#1a1a1a"/>`;
+  svg += `<path d="M42 50 Q50 56 58 50" stroke="#1a1a1a" stroke-width="2" fill="none" stroke-linecap="round"/>`;
+  if(cfg.accessory==='headband'){
+    svg += `<rect x="25" y="27" width="50" height="7" rx="3" fill="${accentColor}"/>`;
+  }else if(cfg.accessory==='shades'){
+    svg += `<rect x="33" y="36" width="14" height="7" rx="3" fill="#111"/><rect x="53" y="36" width="14" height="7" rx="3" fill="#111"/><rect x="47" y="38" width="6" height="2" fill="#111"/>`;
+  }else if(cfg.accessory==='chain'){
+    svg += `<path d="M40 66 Q50 74 60 66" stroke="#FFD447" stroke-width="2.5" fill="none"/><circle cx="50" cy="75" r="3" fill="#FFD447"/>`;
+  }
+  return `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">${svg}</svg>`;
+}
+
+let editingAvatar = null;
+function openAvatarModal(){
+  editingAvatar = {...state.avatar};
+  renderAvatarModal();
+  document.getElementById('avatarModal').classList.add('open');
+}
+function closeAvatarModal(){
+  document.getElementById('avatarModal').classList.remove('open');
+}
+function renderAvatarModal(){
+  document.getElementById('avatarPreview').innerHTML = buildAvatarSVG(editingAvatar);
+  document.getElementById('avatarSkinRow').innerHTML = AVATAR_SKIN_TONES.map(c=>
+    `<div class="swatch ${editingAvatar.skin===c?'selected':''}" style="background:${c}" onclick="setAvatarField('skin','${c}')"></div>`
+  ).join('');
+  document.getElementById('avatarHairRow').innerHTML = AVATAR_HAIR_STYLES.map(h=>
+    `<div class="chip ${editingAvatar.hair===h?'selected':''}" onclick="setAvatarField('hair','${h}')">${h.charAt(0).toUpperCase()+h.slice(1)}</div>`
+  ).join('');
+  document.getElementById('avatarHairColorRow').innerHTML = AVATAR_HAIR_COLORS.map(c=>
+    `<div class="swatch ${editingAvatar.hairColor===c?'selected':''}" style="background:${c}" onclick="setAvatarField('hairColor','${c}')"></div>`
+  ).join('');
+  document.getElementById('avatarAccessoryRow').innerHTML = AVATAR_ACCESSORIES.map(a=>
+    `<div class="chip ${editingAvatar.accessory===a?'selected':''}" onclick="setAvatarField('accessory','${a}')">${a==='none'?'None':a.charAt(0).toUpperCase()+a.slice(1)}</div>`
+  ).join('');
+  const teamSel = document.getElementById('avatarTeamSelect');
+  if(teamSel.options.length===0){
+    teamSel.innerHTML = TEAMS.map(t=>`<option value="${t.id}">${t.city} ${t.name}</option>`).join('');
+  }
+  teamSel.value = editingAvatar.team;
+}
+function setAvatarField(key, value){
+  editingAvatar[key] = value;
+  renderAvatarModal();
+}
+function saveAvatar(){
+  state.avatar = {...editingAvatar};
+  saveState();
+  renderGlobalAvatar();
+  closeAvatarModal();
+  showToast('Avatar saved!');
+}
+function renderGlobalAvatar(){
+  const svg = buildAvatarSVG(state.avatar);
+  const headerEl = document.getElementById('headerAvatarBtn');
+  if(headerEl) headerEl.innerHTML = svg;
+  const youBadge = document.getElementById('youBadge');
+  if(youBadge) youBadge.innerHTML = svg;
+}
+
 /* ============================= INIT ============================= */
 populateTeamFilter();
 refreshTopbar();
 renderShop();
+renderGlobalAvatar();
 setInterval(renderShop, 30000);
 </script>
 </body>
