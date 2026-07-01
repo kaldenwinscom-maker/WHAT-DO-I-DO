@@ -207,6 +207,34 @@
     background:var(--panel2); color:var(--text); border:1px solid var(--line);
     font-weight:700; padding:9px 14px; border-radius:10px; cursor:pointer; font-size:13px;
   }
+  button.secondary:disabled{opacity:0.45; cursor:not-allowed;}
+
+  /* ---- League ---- */
+  .standings-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  @media(max-width:640px){.standings-grid{grid-template-columns:1fr;}}
+  table.standings{width:100%; border-collapse:collapse; font-size:11.5px;}
+  table.standings th, table.standings td{padding:5px 4px; text-align:left; border-bottom:1px solid var(--line); white-space:nowrap;}
+  table.standings th{color:var(--muted); font-weight:600; font-size:10px; text-transform:uppercase;}
+  table.standings td.team-cell{display:flex; align-items:center; gap:6px; white-space:normal;}
+  table.standings .mini-badge{width:18px; height:18px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:7px; font-weight:800; color:#fff;}
+  table.standings tr.you-row{background:rgba(255,122,26,0.12);}
+  table.standings tr.playoff-line td{border-bottom:2px dashed var(--accent2);}
+
+  .bracket-round{margin-bottom:14px;}
+  .bracket-round h4{font-size:12px; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted); margin:0 0 6px;}
+  .bracket-matchup{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    background:var(--panel2); border:1px solid var(--line); border-radius:8px;
+    padding:7px 10px; margin-bottom:6px; font-size:12px;
+  }
+  .bracket-matchup .side{flex:1; display:flex; justify-content:space-between; gap:6px;}
+  .bracket-matchup .side.winner{color:var(--good); font-weight:800;}
+  .bracket-matchup .sep{color:var(--muted); padding:0 6px;}
+  .champion-banner{
+    text-align:center; font-weight:900; font-size:16px; padding:14px; border-radius:12px; margin-bottom:14px;
+    background:linear-gradient(135deg, rgba(255,212,71,0.18), rgba(255,122,26,0.14)); color:var(--gold);
+    border:1px solid rgba(255,212,71,0.4);
+  }
 
   table.boxscore{width:100%; border-collapse:collapse; font-size:12px; margin-top:8px;}
   table.boxscore th, table.boxscore td{padding:6px 4px; text-align:left; border-bottom:1px solid var(--line);}
@@ -394,6 +422,27 @@
     </div>
   </section>
 
+  <!-- LEAGUE -->
+  <section class="view" id="view-league">
+    <h2 class="section-title">NBA League</h2>
+    <p class="hint">Simulate a full two-leg regular season across all 30 teams, then run the playoffs to crown a champion. Enter your own squad in the standings once your roster is complete.</p>
+    <div class="panel">
+      <div class="filter-row" style="align-items:center;">
+        <label style="font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:6px;">
+          Your Squad plays in:
+          <select id="leagueConfSelect" onchange="onLeagueConfChange()">
+            <option value="East">Eastern Conference</option>
+            <option value="West">Western Conference</option>
+          </select>
+        </label>
+      </div>
+      <button class="primary" style="margin-bottom:8px;" onclick="simulateSeason()">🗓️ Simulate Season</button>
+      <button class="secondary" style="width:100%;" id="simPlayoffsBtn" onclick="simulatePlayoffs()" disabled>🏆 Simulate Playoffs</button>
+    </div>
+    <div id="standingsWrap"></div>
+    <div id="playoffsWrap"></div>
+  </section>
+
 </main>
 
 <nav class="tabs">
@@ -401,6 +450,7 @@
   <button class="tab-btn" data-view="collection" onclick="switchTab('collection')"><span class="icon">📇</span>Binder</button>
   <button class="tab-btn" data-view="roster" onclick="switchTab('roster')"><span class="icon">⭐</span>Roster</button>
   <button class="tab-btn" data-view="play" onclick="switchTab('play')"><span class="icon">🏆</span>Play</button>
+  <button class="tab-btn" data-view="league" onclick="switchTab('league')"><span class="icon">🏟️</span>League</button>
 </nav>
 
 <div class="toast" id="toast"></div>
@@ -548,7 +598,7 @@ const TEAMS_BY_ID = Object.fromEntries(TEAMS.map(t=>[t.id,t]));
 const SAVE_KEY = 'hoop_packs_save_v1';
 let state = loadState();
 function defaultState(){
-  return {coins:5000, collection:{}, roster:[null,null,null,null,null], lastDaily:0, wins:0, losses:0};
+  return {coins:5000, collection:{}, roster:[null,null,null,null,null], lastDaily:0, wins:0, losses:0, leagueConf:'East', league:null};
 }
 function loadState(){
   try{
@@ -583,6 +633,7 @@ function switchTab(view){
   if(view==='roster') renderRoster();
   if(view==='play') renderPlay();
   if(view==='shop') renderShop();
+  if(view==='league') renderLeague();
 }
 
 function cardHTML(player, extra){
@@ -876,6 +927,163 @@ function finishGame(myTotal, oppTotal, lineup){
   document.getElementById('resultPanel').style.display='block';
   document.getElementById('playBtn').disabled = false;
   document.getElementById('playBtn').textContent = 'Play Again 🏀';
+}
+
+/* ============================= LEAGUE ============================= */
+function teamTopFiveRating(teamId){
+  const top5 = (ROSTERS[teamId]||[]).slice().sort((a,b)=>b[2]-a[2]).slice(0,5);
+  return Math.round(top5.reduce((s,p)=>s+p[2],0)/top5.length);
+}
+function simulateFullGame(ratingA, ratingB){
+  let a=0, b=0;
+  for(let q=0;q<4;q++){
+    const [pa,pb] = simQuarter(ratingA, ratingB);
+    a+=pa; b+=pb;
+  }
+  return [a,b];
+}
+function pct(rec){ const g = rec.w+rec.l; return g ? rec.w/g : 0; }
+
+function simulateSeason(){
+  const ratings = {};
+  TEAMS.forEach(t=> ratings[t.id] = teamTopFiveRating(t.id));
+  const records = {};
+  TEAMS.forEach(t=> records[t.id] = {w:0,l:0});
+  for(let i=0;i<TEAMS.length;i++){
+    for(let j=i+1;j<TEAMS.length;j++){
+      const A = TEAMS[i].id, B = TEAMS[j].id;
+      for(let g=0; g<2; g++){
+        const [sa,sb] = simulateFullGame(ratings[A], ratings[B]);
+        if(sa>sb){ records[A].w++; records[B].l++; } else { records[B].w++; records[A].l++; }
+      }
+    }
+  }
+  const lineup = myLineup();
+  let userRating = null, userRecord = null;
+  if(lineup.length===5){
+    userRating = Math.round(lineup.reduce((s,p)=>s+p.ovr,0)/5);
+    userRecord = {w:0,l:0};
+    TEAMS.forEach(t=>{
+      const [sa,sb] = simulateFullGame(userRating, ratings[t.id]);
+      if(sa>sb){ userRecord.w++; records[t.id].l++; } else { userRecord.l++; records[t.id].w++; }
+    });
+  }
+  state.league = {ratings, records, userRating, userRecord, playoffs:null, simulatedAt: Date.now()};
+  saveState();
+  renderLeague();
+  showToast('Season simulated! Scroll down to see the standings.');
+}
+
+function conferenceRows(conf){
+  const rows = TEAMS.filter(t=>t.conf===conf).map(t=>({
+    id:t.id, label:`${t.city} ${t.name}`, colors:t.colors,
+    w: state.league.records[t.id].w, l: state.league.records[t.id].l,
+    rating: state.league.ratings[t.id], isUser:false
+  }));
+  if(state.league.userRecord && state.leagueConf===conf){
+    rows.push({id:'YOU', label:'Your Squad', colors:['#ff7a1a','#ffb84d'], w: state.league.userRecord.w, l: state.league.userRecord.l, rating: state.league.userRating, isUser:true});
+  }
+  rows.sort((a,b)=> pct(b)-pct(a) || b.w-a.w);
+  return rows;
+}
+
+function standingsTableHTML(conf){
+  const rows = conferenceRows(conf);
+  let html = `<div class="panel"><h3 style="margin-top:0;font-size:14px;">${conf==='East'?'Eastern':'Western'} Conference</h3>
+  <table class="standings"><tr><th>#</th><th>Team</th><th>OVR</th><th>W</th><th>L</th><th>PCT</th></tr>`;
+  rows.forEach((r,i)=>{
+    html += `<tr class="${r.isUser?'you-row':''} ${i===7?'playoff-line':''}">
+      <td>${i+1}</td>
+      <td class="team-cell"><span class="mini-badge" style="background:linear-gradient(135deg,${r.colors[0]},${r.colors[1]})">${r.isUser?'YOU':r.id}</span>${r.label}</td>
+      <td>${r.rating}</td><td>${r.w}</td><td>${r.l}</td><td>${pct(r).toFixed(3).replace(/^0/,'')}</td>
+    </tr>`;
+  });
+  html += `</table></div>`;
+  return html;
+}
+
+function onLeagueConfChange(){
+  state.leagueConf = document.getElementById('leagueConfSelect').value;
+  saveState();
+  renderLeague();
+}
+
+function renderLeague(){
+  document.getElementById('leagueConfSelect').value = state.leagueConf;
+  const wrap = document.getElementById('standingsWrap');
+  const playoffsBtn = document.getElementById('simPlayoffsBtn');
+  if(!state.league){
+    wrap.innerHTML = `<div class="empty-msg">No season simulated yet — tap "Simulate Season" to generate standings for all 30 teams.</div>`;
+    playoffsBtn.disabled = true;
+    document.getElementById('playoffsWrap').innerHTML = '';
+    return;
+  }
+  wrap.innerHTML = `<div class="standings-grid">${standingsTableHTML('East')}${standingsTableHTML('West')}</div>`;
+  playoffsBtn.disabled = false;
+  if(state.league.playoffs){
+    renderPlayoffsHTML();
+  }else{
+    document.getElementById('playoffsWrap').innerHTML = '';
+  }
+}
+
+function seedsForConf(conf){
+  return conferenceRows(conf).slice(0,8);
+}
+function playSeries(a,b){
+  const [sa,sb] = simulateFullGame(a.rating, b.rating);
+  return {a,b,scoreA:sa,scoreB:sb, winner: sa>=sb ? a : b};
+}
+function simulatePlayoffs(){
+  if(!state.league) return;
+  function bracketForConf(conf){
+    const seeds = seedsForConf(conf);
+    if(seeds.length<8) return null;
+    const round1Pairs = [[seeds[0],seeds[7]],[seeds[3],seeds[4]],[seeds[2],seeds[5]],[seeds[1],seeds[6]]];
+    const round1 = round1Pairs.map(([a,b])=>playSeries(a,b));
+    const round2Pairs = [[round1[0].winner, round1[1].winner],[round1[2].winner, round1[3].winner]];
+    const round2 = round2Pairs.map(([a,b])=>playSeries(a,b));
+    const confFinal = playSeries(round2[0].winner, round2[1].winner);
+    return {round1, round2, confFinal, champion: confFinal.winner};
+  }
+  const east = bracketForConf('East');
+  const west = bracketForConf('West');
+  const finals = (east && west) ? playSeries(east.champion, west.champion) : null;
+  state.league.playoffs = {east, west, finals, champion: finals ? finals.winner : null};
+  saveState();
+  renderPlayoffsHTML();
+  showToast('Playoffs simulated!');
+}
+function matchupHTML(m){
+  const aWin = m.winner===m.a;
+  return `<div class="bracket-matchup">
+    <div class="side ${aWin?'winner':''}"><span>${m.a.label}${m.a.isUser?' (You)':''}</span><span>${m.scoreA}</span></div>
+    <div class="sep">vs</div>
+    <div class="side ${!aWin?'winner':''}"><span>${m.b.label}${m.b.isUser?' (You)':''}</span><span>${m.scoreB}</span></div>
+  </div>`;
+}
+function confBracketHTML(name, bracket){
+  if(!bracket) return `<div class="empty-msg">${name} needs 8 teams to run playoffs.</div>`;
+  return `
+    <div class="bracket-round"><h4>${name} — First Round</h4>${bracket.round1.map(matchupHTML).join('')}</div>
+    <div class="bracket-round"><h4>${name} — Conference Semifinals</h4>${bracket.round2.map(matchupHTML).join('')}</div>
+    <div class="bracket-round"><h4>${name} — Conference Finals</h4>${matchupHTML(bracket.confFinal)}</div>
+  `;
+}
+function renderPlayoffsHTML(){
+  const p = state.league.playoffs;
+  const wrap = document.getElementById('playoffsWrap');
+  if(!p){ wrap.innerHTML=''; return; }
+  let html = '';
+  if(p.champion){
+    html += `<div class="champion-banner">🏆 NBA Champion: ${p.champion.label}${p.champion.isUser?' — YOU!':''}</div>`;
+  }
+  html += `<div class="panel">${confBracketHTML('Eastern Conference', p.east)}</div>`;
+  html += `<div class="panel">${confBracketHTML('Western Conference', p.west)}</div>`;
+  if(p.finals){
+    html += `<div class="panel"><div class="bracket-round"><h4>NBA Finals</h4>${matchupHTML(p.finals)}</div></div>`;
+  }
+  wrap.innerHTML = html;
 }
 
 /* ============================= INIT ============================= */
