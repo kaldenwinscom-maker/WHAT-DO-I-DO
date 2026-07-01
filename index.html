@@ -108,6 +108,51 @@
   .odds-chip.Gold{background:rgba(255,212,71,0.18); color:var(--gold);}
   .odds-chip.Diamond{background:linear-gradient(90deg,rgba(126,232,250,0.22),rgba(193,123,255,0.22)); color:#d9f3ff;}
 
+  .shop-subtabs{display:flex; gap:8px; margin-bottom:14px;}
+  .subtab-btn{
+    flex:1; background:var(--panel2); border:1px solid var(--line); color:var(--muted);
+    font-weight:700; font-size:12.5px; padding:9px; border-radius:10px; cursor:pointer;
+  }
+  .subtab-btn.active{background:rgba(255,122,26,0.16); color:var(--accent2); border-color:rgba(255,122,26,0.4);}
+
+  .badge-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;}
+  @media(max-width:520px){.badge-grid{grid-template-columns:1fr;}}
+  .badge-card{
+    border-radius:14px; padding:14px; border:1px solid var(--line); background:var(--panel2);
+    display:flex; flex-direction:column; gap:6px;
+  }
+  .badge-card .bicon{font-size:22px;}
+  .badge-card h4{margin:0; font-size:14px;}
+  .badge-card .desc{color:var(--muted); font-size:11.5px; flex:1;}
+  .badge-card .owned-count{font-size:11px; color:var(--accent2); font-weight:700;}
+  .badge-card .price{font-weight:700; font-size:13px; margin-top:2px;}
+  .badge-card .price .coin{color:var(--gold);}
+  .badge-card button.buy{
+    margin-top:6px; background:var(--accent); color:#1a0e00; border:none;
+    font-weight:700; padding:8px; border-radius:10px; cursor:pointer; font-size:12.5px;
+  }
+  .badge-card button.buy:disabled{background:#3a3f4d; color:#7a8091; cursor:not-allowed;}
+  .badge-card.perk-owned{border-color:var(--good); background:rgba(40,199,111,0.08);}
+
+  .equip-slots-row{display:flex; gap:10px;}
+  .equip-slot{
+    flex:1; border:2px dashed var(--line); border-radius:12px; padding:12px 8px;
+    text-align:center; cursor:pointer; font-size:12px; color:var(--muted); min-height:70px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; position:relative;
+  }
+  .equip-slot.filled{border-style:solid; border-color:var(--accent2); color:var(--text); background:rgba(255,122,26,0.08);}
+  .equip-slot .slot-icon{font-size:22px;}
+  .equip-slot .remove-x{
+    position:absolute; top:4px; right:6px; color:var(--muted); font-size:13px; cursor:pointer;
+  }
+  .badge-pick-row{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:8px 10px; cursor:pointer;
+  }
+  .badge-pick-row:hover{border-color:var(--accent2);}
+  .badge-pick-row .left{display:flex; align-items:center; gap:8px; font-size:13px;}
+  .badge-pick-row .count{font-size:11px; color:var(--muted);}
+
   /* ---- Cards ---- */
   .card{
     width:100%; aspect-ratio:5/7; border-radius:12px; position:relative;
@@ -147,6 +192,7 @@
   .card .name{font-size:12px; font-weight:800; line-height:1.15; margin-top:4px;}
   .card .attrs{display:grid; grid-template-columns:1fr 1fr; gap:2px 6px; font-size:8.5px; color:rgba(255,255,255,0.85); margin-top:4px;}
   .card .attrs div span{opacity:0.7; margin-right:3px;}
+  .card .badge-icons{display:flex; gap:3px; font-size:11px; margin-top:2px;}
   .card .count-badge{
     position:absolute; bottom:8px; right:8px; background:rgba(0,0,0,0.55);
     border-radius:10px; padding:1px 6px; font-size:10px; font-weight:700;
@@ -329,6 +375,12 @@
   <!-- SHOP -->
   <section class="view active" id="view-shop">
     <h2 class="section-title">Shop</h2>
+    <div class="shop-subtabs">
+      <button class="subtab-btn active" id="subtabPacksBtn" onclick="switchShopSubtab('packs')">📦 Packs</button>
+      <button class="subtab-btn" id="subtabBadgesBtn" onclick="switchShopSubtab('badges')">🏅 Badges &amp; Perks</button>
+    </div>
+
+    <div id="shopPacksPanel">
     <p class="hint">Spend coins on packs to draw new players. Come back daily for a free pack.</p>
     <div class="shop-grid">
       <div class="pack-card daily" id="dailyPackCard">
@@ -379,6 +431,30 @@
       </div>
     </div>
     <p class="hint">Win games to earn coins. Rosters are based on the 2025-26 season and can be edited directly in the source (the <code>ROSTERS</code> object) to stay current.</p>
+    </div>
+
+    <div id="shopBadgesPanel" style="display:none;">
+      <p class="hint">Buy skill badges and equip them on your players for permanent attribute boosts, or grab one-time perks that upgrade your whole squad.</p>
+
+      <h3 class="section-title" style="font-size:15px;">Skill Badges</h3>
+      <p class="hint">Each badge you buy is added to your inventory. Equip up to 2 different badges per player below.</p>
+      <div class="badge-grid" id="badgeShopGrid"></div>
+
+      <div class="panel">
+        <h3 style="margin-top:0;font-size:14px;">Equip Badges</h3>
+        <select id="equipPlayerSelect" onchange="renderEquipSlots()" style="width:100%;margin-bottom:10px;"></select>
+        <div id="equipSlotsWrap"></div>
+        <div id="badgePickerPanel" style="display:none;margin-top:10px;">
+          <h4 style="margin:0 0 8px;font-size:12.5px;color:var(--muted);">Choose a badge to equip</h4>
+          <div id="badgePickerGrid" style="display:flex;flex-direction:column;gap:8px;"></div>
+          <button class="secondary" style="margin-top:8px;width:100%;" onclick="closeBadgePicker()">Cancel</button>
+        </div>
+      </div>
+
+      <h3 class="section-title" style="font-size:15px;">Team Perks</h3>
+      <p class="hint">One-time purchases that permanently upgrade your whole squad.</p>
+      <div class="badge-grid" id="perkShopGrid"></div>
+    </div>
   </section>
 
   <!-- COLLECTION -->
@@ -638,7 +714,8 @@ const TEAMS_BY_ID = Object.fromEntries(TEAMS.map(t=>[t.id,t]));
 const SAVE_KEY = 'hoop_packs_save_v1';
 let state = loadState();
 function defaultState(){
-  return {coins:5000, collection:{}, roster:[null,null,null,null,null], lastDaily:0, wins:0, losses:0, leagueConf:'East', league:null};
+  return {coins:5000, collection:{}, roster:[null,null,null,null,null], lastDaily:0, wins:0, losses:0, leagueConf:'East', league:null,
+    badgeInventory:{}, equippedBadges:{}, perks:{}};
 }
 function loadState(){
   try{
@@ -672,7 +749,7 @@ function switchTab(view){
   if(view==='collection') renderCollection();
   if(view==='roster') renderRoster();
   if(view==='play') renderPlay();
-  if(view==='shop') renderShop();
+  if(view==='shop'){ renderShop(); renderBadgeShop(); renderPerkShop(); renderEquipUI(); }
   if(view==='league') renderLeague();
 }
 
@@ -681,21 +758,24 @@ function cardHTML(player, extra){
   const team = TEAMS_BY_ID[player.team];
   const grad = `linear-gradient(160deg, ${team.colors[0]} 0%, ${team.colors[1]} 130%)`;
   const count = state.collection[player.id]||0;
+  const badges = equippedBadgesFor(player.id);
+  const badgeIcons = badges.map(bk=> BADGES[bk] ? BADGES[bk].icon : '').join('');
   return `<div class="card ${player.rarity}${player.evil?' evil':''}" style="background:${grad};">
     <div class="pos">${player.pos}</div>
     <div class="team-badge" style="background:rgba(0,0,0,0.35)">${team.id}</div>
     <div class="photo-wrap"><div class="photo-circle"><svg viewBox="0 0 100 130"><use href="#playerSilhouette"/></svg></div></div>
     <div>
-      <div class="ovr">${player.ovr}</div>
+      <div class="ovr">${effOvr(player)}</div>
       <div class="rarity-label">${player.evil?'😈 ':''}${player.rarity}</div>
       <div class="name">${player.name}</div>
+      ${badgeIcons ? `<div class="badge-icons">${badgeIcons}</div>` : ''}
     </div>
     <div class="attrs">
-      <div><span>SHT</span>${player.shooting}</div>
-      <div><span>DEF</span>${player.defense}</div>
-      <div><span>SPD</span>${player.speed}</div>
-      <div><span>REB</span>${player.rebounding}</div>
-      <div><span>PLM</span>${player.playmaking}</div>
+      <div><span>SHT</span>${effAttr(player,'shooting')}</div>
+      <div><span>DEF</span>${effAttr(player,'defense')}</div>
+      <div><span>SPD</span>${effAttr(player,'speed')}</div>
+      <div><span>REB</span>${effAttr(player,'rebounding')}</div>
+      <div><span>PLM</span>${effAttr(player,'playmaking')}</div>
       <div><span>TM</span>${team.city}</div>
     </div>
     ${extra.showCount && count>1 ? `<div class="count-badge">x${count}</div>` : ''}
@@ -711,6 +791,187 @@ const PACKS = {
   daily:{label:'Daily Free Pack', cost:0, cards:3, odds:{Bronze:0.65,Silver:0.25,Gold:0.08,Diamond:0.02}}
 };
 const DAY_MS = 24*60*60*1000;
+
+/* ---- Skill badges & team perks ---- */
+const BADGES = {
+  sharpshooter:{label:'Sharpshooter', icon:'🎯', attr:'shooting', bonus:6, cost:800, desc:'+6 Shooting when equipped on a player.'},
+  lockdown:{label:'Lockdown Defender', icon:'🛡️', attr:'defense', bonus:6, cost:800, desc:'+6 Defense when equipped on a player.'},
+  speedster:{label:'Speed Demon', icon:'⚡', attr:'speed', bonus:6, cost:800, desc:'+6 Speed when equipped on a player.'},
+  glass:{label:'Glass Cleaner', icon:'🧹', attr:'rebounding', bonus:6, cost:800, desc:'+6 Rebounding when equipped on a player.'},
+  floorgeneral:{label:'Floor General', icon:'🧠', attr:'playmaking', bonus:6, cost:800, desc:'+6 Playmaking when equipped on a player.'}
+};
+const BADGE_SLOTS_PER_PLAYER = 2;
+const PERKS = {
+  homecourt:{label:'Home Court Edge', icon:'🏟️', cost:3000, desc:'+3 team rating boost for your squad in every simulated game and league matchup.'},
+  fastbreak:{label:'Fast Break Offense', icon:'💨', cost:2500, desc:'+8% success chance on "Drive to the Rim" in POV mode.'},
+  sharpbench:{label:'Sharp Bench', icon:'🎯', cost:2500, desc:'+5 effective Shooting for stat allocation across your whole roster.'},
+  ironwall:{label:'Iron Wall Defense', icon:'🧱', cost:3000, desc:'-3 rating for any opponent you personally face in games or the league.'},
+  hustler:{label:'Coin Hustler', icon:'💰', cost:4000, desc:'+15% coins earned from every game you win.'}
+};
+
+function rawEquippedSlots(playerId){
+  return (state.equippedBadges && state.equippedBadges[playerId]) || [];
+}
+function equippedBadgesFor(playerId){
+  return rawEquippedSlots(playerId).filter(Boolean);
+}
+function effOvr(player){
+  const badges = equippedBadgesFor(player.id);
+  return clamp(player.ovr + badges.length*2, 35, 99);
+}
+function effAttr(player, attrKey){
+  let val = player[attrKey];
+  equippedBadgesFor(player.id).forEach(bk=>{
+    const b = BADGES[bk];
+    if(b && b.attr===attrKey) val += b.bonus;
+  });
+  if(attrKey==='shooting' && state.perks && state.perks.sharpbench) val += 5;
+  return clamp(val, 35, 99);
+}
+function withHomecourt(rating){ return rating + (state.perks && state.perks.homecourt ? 3 : 0); }
+function withIronwall(rating){ return rating - (state.perks && state.perks.ironwall ? 3 : 0); }
+function coinRewardFor(win){
+  const base = win ? 300 : 100;
+  if(win && state.perks && state.perks.hustler) return Math.round(base*1.15);
+  return base;
+}
+
+function switchShopSubtab(tab){
+  document.getElementById('shopPacksPanel').style.display = tab==='packs' ? 'block' : 'none';
+  document.getElementById('shopBadgesPanel').style.display = tab==='badges' ? 'block' : 'none';
+  document.getElementById('subtabPacksBtn').classList.toggle('active', tab==='packs');
+  document.getElementById('subtabBadgesBtn').classList.toggle('active', tab==='badges');
+  if(tab==='badges'){ renderBadgeShop(); renderPerkShop(); renderEquipUI(); }
+}
+
+function renderBadgeShop(){
+  const grid = document.getElementById('badgeShopGrid');
+  grid.innerHTML = Object.entries(BADGES).map(([key,b])=>{
+    const owned = (state.badgeInventory[key]||0);
+    return `<div class="badge-card">
+      <div class="bicon">${b.icon}</div>
+      <h4>${b.label}</h4>
+      <div class="desc">${b.desc}</div>
+      <div class="owned-count">Owned: ${owned}</div>
+      <div class="price"><span class="coin">🪙 ${b.cost}</span></div>
+      <button class="buy" onclick="buyBadge('${key}')" ${state.coins<b.cost?'disabled':''}>Buy Badge</button>
+    </div>`;
+  }).join('');
+}
+function buyBadge(key){
+  const b = BADGES[key];
+  if(state.coins < b.cost){ showToast('Not enough coins for that badge!'); return; }
+  state.coins -= b.cost;
+  state.badgeInventory[key] = (state.badgeInventory[key]||0)+1;
+  saveState(); refreshTopbar(); renderBadgeShop(); renderEquipUI();
+  showToast(`Bought ${b.label}! Equip it on a player below.`);
+}
+
+function renderPerkShop(){
+  const grid = document.getElementById('perkShopGrid');
+  grid.innerHTML = Object.entries(PERKS).map(([key,p])=>{
+    const owned = !!(state.perks && state.perks[key]);
+    return `<div class="badge-card ${owned?'perk-owned':''}">
+      <div class="bicon">${p.icon}</div>
+      <h4>${p.label}</h4>
+      <div class="desc">${p.desc}</div>
+      <div class="price"><span class="coin">🪙 ${p.cost}</span></div>
+      <button class="buy" onclick="buyPerk('${key}')" ${owned?'disabled':(state.coins<p.cost?'disabled':'')}>${owned?'✅ Active':'Buy Perk'}</button>
+    </div>`;
+  }).join('');
+}
+function buyPerk(key){
+  const p = PERKS[key];
+  if(state.perks[key]) return;
+  if(state.coins < p.cost){ showToast('Not enough coins for that perk!'); return; }
+  state.coins -= p.cost;
+  state.perks[key] = true;
+  saveState(); refreshTopbar(); renderPerkShop();
+  showToast(`${p.label} is now active for your whole squad!`);
+}
+
+function renderEquipUI(){
+  const sel = document.getElementById('equipPlayerSelect');
+  const lineup = myLineup();
+  if(lineup.length===0){
+    sel.innerHTML = `<option value="">Build your roster first</option>`;
+    document.getElementById('equipSlotsWrap').innerHTML = `<div class="empty-msg">Add players to your Roster to equip badges on them.</div>`;
+    return;
+  }
+  const prevValue = sel.value;
+  sel.innerHTML = lineup.map(p=>`<option value="${p.id}">${p.name} (${p.pos}, ${p.ovr} OVR)</option>`).join('');
+  if(lineup.some(p=>p.id===prevValue)) sel.value = prevValue;
+  renderEquipSlots();
+}
+function renderEquipSlots(){
+  const sel = document.getElementById('equipPlayerSelect');
+  const playerId = sel.value;
+  const wrap = document.getElementById('equipSlotsWrap');
+  if(!playerId){ wrap.innerHTML=''; return; }
+  const player = PLAYERS_BY_ID[playerId];
+  const equipped = rawEquippedSlots(playerId);
+  let html = `<div class="equip-slots-row">`;
+  for(let i=0;i<BADGE_SLOTS_PER_PLAYER;i++){
+    const bk = equipped[i];
+    if(bk){
+      const b = BADGES[bk];
+      html += `<div class="equip-slot filled">
+        <span class="remove-x" onclick="event.stopPropagation();unequipBadge('${playerId}',${i})">✕</span>
+        <div class="slot-icon">${b.icon}</div>
+        <div>${b.label}</div>
+      </div>`;
+    }else{
+      html += `<div class="equip-slot" onclick="openBadgePicker('${playerId}',${i})">
+        <div class="slot-icon">➕</div>
+        <div>Add Badge</div>
+      </div>`;
+    }
+  }
+  html += `</div><div style="text-align:center;margin-top:8px;color:var(--muted);font-size:11.5px;">Effective OVR: ${effOvr(player)} (base ${player.ovr})</div>`;
+  wrap.innerHTML = html;
+  closeBadgePicker();
+}
+function openBadgePicker(playerId, slotIdx){
+  const equipped = rawEquippedSlots(playerId).filter(Boolean);
+  const panel = document.getElementById('badgePickerPanel');
+  const grid = document.getElementById('badgePickerGrid');
+  const options = Object.entries(BADGES).filter(([key])=> (state.badgeInventory[key]||0)>0 && !equipped.includes(key));
+  if(options.length===0){
+    grid.innerHTML = `<div class="empty-msg">No unequipped badges in your inventory — buy some above!</div>`;
+  }else{
+    grid.innerHTML = options.map(([key,b])=>`
+      <div class="badge-pick-row" onclick="assignBadge('${playerId}',${slotIdx},'${key}')">
+        <div class="left"><span>${b.icon}</span><span>${b.label}</span></div>
+        <div class="count">Owned: ${state.badgeInventory[key]}</div>
+      </div>`).join('');
+  }
+  panel.style.display='block';
+}
+function closeBadgePicker(){
+  document.getElementById('badgePickerPanel').style.display='none';
+}
+function assignBadge(playerId, slotIdx, badgeKey){
+  if((state.badgeInventory[badgeKey]||0)<=0) return;
+  if(!state.equippedBadges[playerId]) state.equippedBadges[playerId] = [];
+  const equipped = state.equippedBadges[playerId];
+  if(equipped.includes(badgeKey)) return;
+  state.badgeInventory[badgeKey]--;
+  equipped[slotIdx] = badgeKey;
+  saveState();
+  renderEquipSlots();
+  renderBadgeShop();
+}
+function unequipBadge(playerId, slotIdx){
+  const equipped = state.equippedBadges[playerId] || [];
+  const badgeKey = equipped[slotIdx];
+  if(!badgeKey) return;
+  state.badgeInventory[badgeKey] = (state.badgeInventory[badgeKey]||0)+1;
+  equipped[slotIdx] = null;
+  state.equippedBadges[playerId] = equipped;
+  saveState();
+  renderEquipSlots();
+  renderBadgeShop();
+}
 
 function renderShop(){
   const btn = document.getElementById('dailyBtn');
@@ -832,7 +1093,7 @@ function renderRoster(){
     return `<div class="slot filled">${cardHTML(p)}<div class="remove-x" onclick="event.stopPropagation();removeFromRoster(${i})">✕</div></div>`;
   }).join('');
   const filled = state.roster.filter(id=>id && PLAYERS_BY_ID[id]);
-  const rating = filled.length ? Math.round(filled.reduce((s,id)=>s+PLAYERS_BY_ID[id].ovr,0)/filled.length) : null;
+  const rating = filled.length ? Math.round(filled.reduce((s,id)=>s+effOvr(PLAYERS_BY_ID[id]),0)/filled.length) : null;
   document.getElementById('rosterRatingText').textContent = rating ? `${rating} OVR (${filled.length}/5 filled)` : `Need players (${filled.length}/5 filled)`;
 }
 function openRosterPicker(slotIdx){
@@ -885,7 +1146,7 @@ function myLineup(){
 }
 function renderPlay(){
   const lineup = myLineup();
-  const rating = lineup.length===5 ? Math.round(lineup.reduce((s,p)=>s+p.ovr,0)/5) : null;
+  const rating = lineup.length===5 ? withHomecourt(Math.round(lineup.reduce((s,p)=>s+effOvr(p),0)/5)) : null;
   document.getElementById('myRatingText').textContent = rating ? rating+' OVR' : 'Roster incomplete';
   const btn = document.getElementById('playBtn');
   const povBtn = document.getElementById('povBtn');
@@ -917,8 +1178,8 @@ function simQuarter(myR, oppR){
 
 function startGame(){
   const lineup = myLineup();
-  const myRating = Math.round(lineup.reduce((s,p)=>s+p.ovr,0)/5);
-  const oppRating = Math.round(cpuLineup.reduce((s,p)=>s+p.ovr,0)/5);
+  const myRating = withHomecourt(Math.round(lineup.reduce((s,p)=>s+effOvr(p),0)/5));
+  const oppRating = withIronwall(Math.round(cpuLineup.reduce((s,p)=>s+p.ovr,0)/5));
   document.getElementById('playBtn').disabled = true;
   document.getElementById('scoreboard').style.display='flex';
   document.getElementById('resultPanel').style.display='none';
@@ -942,7 +1203,7 @@ function startGame(){
 }
 
 function allocateStat(lineup, total, attrKey){
-  const weights = lineup.map(p=>p[attrKey] + Math.random()*20);
+  const weights = lineup.map(p=>effAttr(p,attrKey) + Math.random()*20);
   const sum = weights.reduce((a,b)=>a+b,0);
   const raw = weights.map(w=> (w/sum)*total);
   return raw.map(v=>Math.max(0, Math.round(v)));
@@ -950,7 +1211,7 @@ function allocateStat(lineup, total, attrKey){
 
 function finishGame(myTotal, oppTotal, lineup){
   const win = myTotal > oppTotal;
-  const reward = win ? 300 : 100;
+  const reward = coinRewardFor(win);
   state.coins += reward;
   if(win) state.wins++; else state.losses++;
   saveState(); refreshTopbar();
@@ -1017,8 +1278,8 @@ function startPov(playerId){
   const lineup = myLineup();
   const controlled = PLAYERS_BY_ID[playerId];
   const support = lineup.filter(p=>p.id!==playerId);
-  const supportRating = Math.round(support.reduce((s,p)=>s+p.ovr,0)/support.length);
-  const oppRating = Math.round(cpuLineup.reduce((s,p)=>s+p.ovr,0)/cpuLineup.length);
+  const supportRating = withHomecourt(Math.round(support.reduce((s,p)=>s+effOvr(p),0)/support.length));
+  const oppRating = withIronwall(Math.round(cpuLineup.reduce((s,p)=>s+p.ovr,0)/cpuLineup.length));
   const oppDefense = Math.round(cpuLineup.reduce((s,p)=>s+estimateDefense(p.pos,p.ovr),0)/cpuLineup.length);
   povState = {
     controlled, support, supportRating, oppRating, oppDefense,
@@ -1047,7 +1308,7 @@ function povAction(type){
   if(type==='jumper'){
     const isThree = Math.random()<0.35;
     const base = isThree?0.32:0.48;
-    const prob = clamp(base + (p.shooting-def)*0.006, 0.12, 0.85);
+    const prob = clamp(base + (effAttr(p,'shooting')-def)*0.006, 0.12, 0.85);
     if(Math.random()<prob){
       const pts = isThree?3:2;
       povState.myScore += pts; povState.userPoints += pts;
@@ -1056,11 +1317,12 @@ function povAction(type){
       logPov(`🎯 ${p.name}'s jumper rims out.`, 'miss');
     }
   }else if(type==='drive'){
-    const turnoverProb = clamp(0.14 - (p.speed-70)*0.0015, 0.04, 0.2);
+    const turnoverProb = clamp(0.14 - (effAttr(p,'speed')-70)*0.0015, 0.04, 0.2);
     if(Math.random()<turnoverProb){
       logPov(`⚡ ${p.name} drives but travels — turnover!`, 'miss');
     }else{
-      const prob = clamp(0.58 + (p.speed-def)*0.006, 0.25, 0.92);
+      const fastbreakBonus = (state.perks && state.perks.fastbreak) ? 0.08 : 0;
+      const prob = clamp(0.58 + (effAttr(p,'speed')-def)*0.006 + fastbreakBonus, 0.25, 0.95);
       if(Math.random()<prob){
         const andOne = Math.random()<0.15;
         const pts = andOne?3:2;
@@ -1071,11 +1333,11 @@ function povAction(type){
       }
     }
   }else if(type==='dish'){
-    const turnoverProb = clamp(0.12 - (p.playmaking-70)*0.0015, 0.04, 0.18);
+    const turnoverProb = clamp(0.12 - (effAttr(p,'playmaking')-70)*0.0015, 0.04, 0.18);
     if(Math.random()<turnoverProb){
       logPov(`🤝 ${p.name}'s pass is picked off — turnover!`, 'miss');
     }else{
-      const prob = clamp(0.55 + (p.playmaking-def)*0.006, 0.25, 0.92);
+      const prob = clamp(0.55 + (effAttr(p,'playmaking')-def)*0.006, 0.25, 0.92);
       if(Math.random()<prob){
         const pts = Math.random()<0.3 ? 3 : 2;
         povState.myScore += pts; povState.userAssists += 1;
@@ -1113,7 +1375,7 @@ function finishPov(){
 function closePovModalAndShowResults(){
   document.getElementById('povModal').classList.remove('open');
   const win = povState.myScore > povState.oppScore;
-  const reward = win ? 300 : 100;
+  const reward = coinRewardFor(win);
   state.coins += reward;
   if(win) state.wins++; else state.losses++;
   saveState(); refreshTopbar();
@@ -1170,10 +1432,10 @@ function simulateSeason(){
   const lineup = myLineup();
   let userRating = null, userRecord = null;
   if(lineup.length===5){
-    userRating = Math.round(lineup.reduce((s,p)=>s+p.ovr,0)/5);
+    userRating = withHomecourt(Math.round(lineup.reduce((s,p)=>s+effOvr(p),0)/5));
     userRecord = {w:0,l:0};
     TEAMS.forEach(t=>{
-      const [sa,sb] = simulateFullGame(userRating, ratings[t.id]);
+      const [sa,sb] = simulateFullGame(userRating, withIronwall(ratings[t.id]));
       if(sa>sb){ userRecord.w++; records[t.id].l++; } else { userRecord.l++; records[t.id].w++; }
     });
   }
