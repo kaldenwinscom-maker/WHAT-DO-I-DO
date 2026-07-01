@@ -196,6 +196,17 @@
     background:rgba(255,92,92,0.15); color:var(--bad); border:1px solid rgba(255,92,92,0.4);
     font-weight:700; padding:6px 10px; border-radius:8px; cursor:pointer; font-size:11.5px;
   }
+  .dev-attr-row{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    background:var(--panel2); border:1px solid var(--line); border-radius:8px;
+    padding:7px 10px; margin-bottom:6px; font-size:12.5px;
+  }
+  .dev-attr-row .dev-attr-val{font-weight:800; color:var(--accent2); min-width:24px; text-align:right;}
+  button.stat-up-btn{
+    background:rgba(40,199,111,0.15); color:var(--good); border:1px solid rgba(40,199,111,0.4);
+    font-weight:800; padding:4px 10px; border-radius:8px; cursor:pointer; font-size:12px;
+  }
+  button.stat-up-btn:disabled{opacity:0.35; cursor:not-allowed;}
 
   /* ---- Avatar ---- */
   .avatar-circle{
@@ -557,6 +568,13 @@
       <button class="secondary" style="margin-top:10px;" onclick="closeRosterPicker()">Cancel</button>
     </div>
 
+    <h2 class="section-title" style="font-size:16px;">Player Development</h2>
+    <p class="hint">Every game your lineup plays earns them XP based on their box-score performance. Level up to earn points, then spend them to permanently boost an attribute.</p>
+    <div class="panel">
+      <select id="devPlayerSelect" onchange="renderDevPanel()" style="width:100%;margin-bottom:10px;"></select>
+      <div id="devPanelWrap"></div>
+    </div>
+
     <h2 class="section-title" style="font-size:16px;">Create Your Own Player</h2>
     <p class="hint">Build a custom card from scratch — pick a name, team, position, archetype, and power level. It's added to your Binder instantly and can go straight into your lineup.</p>
     <div class="panel">
@@ -894,7 +912,8 @@ let state = loadState();
 function defaultState(){
   return {coins:5000, collection:{}, roster:[null,null,null,null,null], lastDaily:0, wins:0, losses:0, leagueConf:'East', league:null,
     badgeInventory:{}, equippedBadges:{}, perks:{}, career:null, customPlayers:[],
-    avatar:{skin:'#C68642', hair:'short', hairColor:'#2C1B18', accessory:'none', team:'LAL'}};
+    avatar:{skin:'#C68642', hair:'short', hairColor:'#2C1B18', accessory:'none', team:'LAL'},
+    playerProgress:{}, playerGrowth:{}};
 }
 function loadState(){
   try{
@@ -926,7 +945,7 @@ function switchTab(view){
   document.getElementById('view-'+view).classList.add('active');
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
   if(view==='collection') renderCollection();
-  if(view==='roster'){ renderRoster(); renderCustomCreator(); renderCustomPlayersList(); }
+  if(view==='roster'){ renderRoster(); renderCustomCreator(); renderCustomPlayersList(); renderDevSelect(); }
   if(view==='play') renderPlay();
   if(view==='shop'){ renderShop(); renderBadgeShop(); renderPerkShop(); renderEquipUI(); }
   if(view==='league') renderLeague();
@@ -995,10 +1014,7 @@ function rawEquippedSlots(playerId){
 function equippedBadgesFor(playerId){
   return rawEquippedSlots(playerId).filter(Boolean);
 }
-function effOvr(player){
-  const badges = equippedBadgesFor(player.id);
-  return clamp(player.ovr + badges.length*2, 35, 99);
-}
+const GROWTH_ATTRS = ['shooting','defense','speed','rebounding','playmaking'];
 function effAttr(player, attrKey){
   let val = player[attrKey];
   equippedBadgesFor(player.id).forEach(bk=>{
@@ -1006,7 +1022,12 @@ function effAttr(player, attrKey){
     if(b && b.attr===attrKey) val += b.bonus;
   });
   if(attrKey==='shooting' && state.perks && state.perks.sharpbench) val += 5;
+  const growth = (state.playerGrowth && state.playerGrowth[player.id]) || {};
+  val += growth[attrKey] || 0;
   return clamp(val, 35, 99);
+}
+function effOvr(player){
+  return Math.round(GROWTH_ATTRS.reduce((s,k)=>s+effAttr(player,k),0)/GROWTH_ATTRS.length);
 }
 function withHomecourt(rating){ return rating + (state.perks && state.perks.homecourt ? 3 : 0); }
 function withIronwall(rating){ return rating - (state.perks && state.perks.ironwall ? 3 : 0); }
@@ -1415,6 +1436,13 @@ function finishGame(myTotal, oppTotal, lineup){
   const reb = allocateStat(lineup, 40 + Math.round(Math.random()*10), 'rebounding');
   const ast = allocateStat(lineup, 22 + Math.round(Math.random()*8), 'playmaking');
 
+  const leveledUpNames = [];
+  lineup.forEach((p,i)=>{
+    const xpGain = 15 + Math.round(pts[i]*0.4 + reb[i]*0.2 + ast[i]*0.3) + (win?10:0);
+    if(awardPlayerXP(p.id, xpGain) > 0) leveledUpNames.push(p.name);
+  });
+  saveState();
+
   const banner = document.getElementById('resultBanner');
   banner.className = 'result-banner ' + (win ? 'win':'loss');
   banner.textContent = (win ? '🏆 VICTORY! ' : 'DEFEAT. ') + `${myTotal} - ${oppTotal}  (+${reward} coins)`;
@@ -1428,6 +1456,7 @@ function finishGame(myTotal, oppTotal, lineup){
   document.getElementById('resultPanel').style.display='block';
   document.getElementById('playBtn').disabled = false;
   document.getElementById('playBtn').textContent = 'Play Again 🏀';
+  if(leveledUpNames.length) showToast(`⬆ ${leveledUpNames.join(', ')} leveled up! Spend points in Roster > Player Development.`);
 }
 
 /* ============================= POV MODE ============================= */
@@ -1584,6 +1613,15 @@ function closePovModalAndShowResults(){
   const reb = allocateStat(povState.support, 32 + Math.round(Math.random()*8), 'rebounding');
   const ast = allocateStat(povState.support, 14 + Math.round(Math.random()*6), 'playmaking');
 
+  const leveledUpNames = [];
+  const controlledXp = 20 + Math.round(povState.userPoints*0.5 + povState.userAssists*0.8) + (win?15:0);
+  if(awardPlayerXP(povState.controlled.id, controlledXp) > 0) leveledUpNames.push(povState.controlled.name);
+  povState.support.forEach((p,i)=>{
+    const xpGain = 12 + Math.round(pts[i]*0.4 + reb[i]*0.2 + ast[i]*0.3) + (win?8:0);
+    if(awardPlayerXP(p.id, xpGain) > 0) leveledUpNames.push(p.name);
+  });
+  saveState();
+
   const banner = document.getElementById('resultBanner');
   banner.className = 'result-banner ' + (win ? 'win':'loss');
   banner.textContent = (win ? '🏆 VICTORY! ' : 'DEFEAT. ') + `${povState.myScore} - ${povState.oppScore}  (+${reward} coins)`;
@@ -1597,6 +1635,7 @@ function closePovModalAndShowResults(){
   table.innerHTML = rows;
   document.getElementById('resultPanel').style.display='block';
   document.getElementById('resultPanel').scrollIntoView({behavior:'smooth', block:'nearest'});
+  if(leveledUpNames.length) showToast(`⬆ ${leveledUpNames.join(', ')} leveled up! Spend points in Roster > Player Development.`);
 }
 
 /* ============================= LEAGUE ============================= */
@@ -2228,6 +2267,77 @@ function renderGlobalAvatar(){
   if(headerEl) headerEl.innerHTML = svg;
   const youBadge = document.getElementById('youBadge');
   if(youBadge) youBadge.innerHTML = svg;
+}
+
+/* ============================= PLAYER DEVELOPMENT (XP & upgrades) ============================= */
+function getProgress(id){
+  if(!state.playerProgress[id]) state.playerProgress[id] = {level:1, xp:0, xpToNext:100, points:0};
+  return state.playerProgress[id];
+}
+function awardPlayerXP(playerId, xp){
+  const prog = getProgress(playerId);
+  let leveledUp = 0;
+  prog.xp += xp;
+  while(prog.xp >= prog.xpToNext){
+    prog.xp -= prog.xpToNext;
+    prog.level++;
+    prog.points++;
+    prog.xpToNext = 100 + (prog.level-1)*40;
+    leveledUp++;
+  }
+  return leveledUp;
+}
+function renderDevSelect(){
+  const sel = document.getElementById('devPlayerSelect');
+  const lineup = myLineup();
+  if(lineup.length===0){
+    sel.innerHTML = `<option value="">Add players to your roster first</option>`;
+    document.getElementById('devPanelWrap').innerHTML = '';
+    return;
+  }
+  const prev = sel.value;
+  sel.innerHTML = lineup.map(p=>`<option value="${p.id}">${p.name} (${p.pos})</option>`).join('');
+  if(lineup.some(p=>p.id===prev)) sel.value = prev;
+  renderDevPanel();
+}
+const DEV_ATTR_LABELS = {shooting:'Shooting', defense:'Defense', speed:'Speed', rebounding:'Rebounding', playmaking:'Playmaking'};
+function renderDevPanel(){
+  const sel = document.getElementById('devPlayerSelect');
+  const id = sel.value;
+  const wrap = document.getElementById('devPanelWrap');
+  if(!id){ wrap.innerHTML = ''; return; }
+  const player = getPlayer(id);
+  if(!player){ wrap.innerHTML = ''; return; }
+  const prog = getProgress(id);
+  const xpPct = Math.min(100, Math.round((prog.xp/prog.xpToNext)*100));
+  wrap.innerHTML = `
+    <div class="career-stats-row">
+      <div class="career-stat-box"><div class="val">${effOvr(player)}</div><div class="lbl">OVR</div></div>
+      <div class="career-stat-box"><div class="val">${prog.level}</div><div class="lbl">Level</div></div>
+      <div class="career-stat-box"><div class="val">${prog.points}</div><div class="lbl">Points</div></div>
+    </div>
+    <div class="xp-bar-track"><div class="xp-bar-fill" style="width:${xpPct}%"></div></div>
+    <div class="xp-label">${prog.xp} / ${prog.xpToNext} XP to Level ${prog.level+1}</div>
+    <div style="margin-top:12px;">
+      ${GROWTH_ATTRS.map(a=>{
+        const val = effAttr(player,a);
+        const disabled = prog.points<=0 || val>=99;
+        return `<div class="dev-attr-row"><span>${DEV_ATTR_LABELS[a]}</span><span class="dev-attr-val">${val}</span><button class="stat-up-btn" onclick="spendGrowthPoint('${id}','${a}')" ${disabled?'disabled':''}>+1</button></div>`;
+      }).join('')}
+    </div>
+  `;
+}
+function spendGrowthPoint(id, attrKey){
+  const prog = getProgress(id);
+  const player = getPlayer(id);
+  if(!player || prog.points<=0 || effAttr(player, attrKey)>=99) return;
+  if(!state.playerGrowth[id]) state.playerGrowth[id] = {shooting:0,defense:0,speed:0,rebounding:0,playmaking:0};
+  state.playerGrowth[id][attrKey] = (state.playerGrowth[id][attrKey]||0) + 1;
+  prog.points--;
+  saveState();
+  renderDevPanel();
+  renderRoster();
+  showToast('Stat upgraded!');
 }
 
 /* ============================= INIT ============================= */
