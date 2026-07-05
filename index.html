@@ -305,6 +305,27 @@
   .card.evil .photo-circle svg{fill:#ff3b3b;}
   .card.evil .rarity-label{color:#ff6b6b;}
   .card.evil .team-badge{background:rgba(120,0,0,0.6) !important;}
+  .card.Mythic{
+    background:radial-gradient(circle at 30% 15%, #2a2205 0%, #0d0d0d 75%) !important;
+    border:2px solid #FFD447;
+    box-shadow:0 4px 30px rgba(255,212,71,0.55), 0 0 30px rgba(255,212,71,0.4);
+    animation:mythicPulse 2.2s ease-in-out infinite;
+  }
+  @keyframes mythicPulse{
+    0%,100%{box-shadow:0 4px 30px rgba(255,212,71,0.55), 0 0 30px rgba(255,212,71,0.4);}
+    50%{box-shadow:0 4px 40px rgba(255,212,71,0.85), 0 0 44px rgba(255,180,20,0.65);}
+  }
+  .card.Mythic::after{
+    content:''; position:absolute; inset:0; pointer-events:none;
+    background:linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.5) 45%, rgba(255,255,255,0.5) 50%, transparent 65%);
+    background-size:220% 220%; background-position:130% 0;
+    animation:shimmerSweep 2.4s ease-in-out infinite;
+    mix-blend-mode:overlay;
+  }
+  .card.Mythic .photo-circle{background:radial-gradient(circle at 35% 30%, rgba(255,212,71,0.4), rgba(0,0,0,0.3)); border-color:rgba(255,212,71,0.7);}
+  .card.Mythic .photo-circle svg{fill:#FFD447;}
+  .card.Mythic .rarity-label{color:#FFD447; text-shadow:0 0 8px rgba(255,212,71,0.6);}
+  .card.Mythic .team-badge{background:rgba(80,64,0,0.6) !important;}
   .card .team-badge{
     align-self:flex-start; font-size:9px; font-weight:800; letter-spacing:0.5px;
     padding:2px 6px; border-radius:6px; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,0.4);
@@ -614,6 +635,7 @@
       </div>
     </div>
     <p class="hint">Win games to earn coins. Rosters are based on the 2025-26 season and can be edited directly in the source (the <code>ROSTERS</code> object) to stay current.</p>
+    <p class="hint" style="color:#FFD447;">👑 Every card slot in every pack — even the free daily one — has a secret 1% chance to pull <b>Kakldn</b>, a Mythic 100 OVR legend with every attribute maxed out.</p>
     </div>
 
     <div id="shopBadgesPanel" style="display:none;">
@@ -647,7 +669,7 @@
       <select id="filterTeam" onchange="renderCollection()"></select>
       <select id="filterRarity" onchange="renderCollection()">
         <option value="">All Rarities</option>
-        <option>Bronze</option><option>Silver</option><option>Gold</option><option>Diamond</option>
+        <option>Bronze</option><option>Silver</option><option>Gold</option><option>Diamond</option><option>Mythic</option>
       </select>
       <select id="sortBy" onchange="renderCollection()">
         <option value="ovr">Sort: OVR</option>
@@ -1015,8 +1037,14 @@ function buildPlayers(){
   return list;
 }
 const PLAYERS = buildPlayers();
+const KAKLDN = {
+  id:'MYTHIC-KAKLDN', name:'Kakldn', pos:'SF', ovr:100, team:'MYT', rarity:'Mythic', evil:false, mythic:true,
+  shooting:100, defense:100, speed:100, rebounding:100, playmaking:100
+};
+PLAYERS.push(KAKLDN);
 const PLAYERS_BY_ID = Object.fromEntries(PLAYERS.map(p=>[p.id,p]));
 const TEAMS_BY_ID = Object.fromEntries(TEAMS.map(t=>[t.id,t]));
+TEAMS_BY_ID.MYT = {id:'MYT', city:'Free Agent', name:'Legend', colors:['#0d0d0d','#FFD447'], conf:'None'};
 function getPlayer(id){
   if(PLAYERS_BY_ID[id]) return PLAYERS_BY_ID[id];
   return (state.customPlayers||[]).find(p=>p.id===id);
@@ -1081,7 +1109,7 @@ function cardHTML(player, extra){
     <div class="photo-wrap"><div class="photo-circle"><svg viewBox="0 0 100 130"><use href="#playerSilhouette"/></svg></div></div>
     <div>
       <div class="ovr">${effOvr(player)}</div>
-      <div class="rarity-label">${player.evil?'😈 ':''}${player.rarity}</div>
+      <div class="rarity-label">${player.evil?'😈 ':''}${player.mythic?'👑 ':''}${player.rarity}</div>
       <div class="name">${player.name}</div>
       ${badgeIcons ? `<div class="badge-icons">${badgeIcons}</div>` : ''}
     </div>
@@ -1106,6 +1134,7 @@ const PACKS = {
   daily:{label:'Daily Free Pack', cost:0, cards:3, odds:{Bronze:0.65,Silver:0.25,Gold:0.08,Diamond:0.02}}
 };
 const DAY_MS = 24*60*60*1000;
+const KAKLDN_PULL_CHANCE = 0.01;
 
 /* ---- Skill badges & team perks ---- */
 const BADGES = {
@@ -1132,6 +1161,7 @@ function equippedBadgesFor(playerId){
 }
 const GROWTH_ATTRS = ['shooting','defense','speed','rebounding','playmaking'];
 function effAttr(player, attrKey){
+  if(player.mythic) return 100;
   let val = player[attrKey];
   equippedBadgesFor(player.id).forEach(bk=>{
     const b = BADGES[bk];
@@ -1143,6 +1173,7 @@ function effAttr(player, attrKey){
   return clamp(val, 35, 99);
 }
 function effOvr(player){
+  if(player.mythic) return 100;
   return Math.round(GROWTH_ATTRS.reduce((s,k)=>s+effAttr(player,k),0)/GROWTH_ATTRS.length);
 }
 function withHomecourt(rating){ return rating + (state.perks && state.perks.homecourt ? 3 : 0); }
@@ -1337,6 +1368,10 @@ function openPackFlow(key){
   currentPack = key;
   currentPulls = [];
   for(let i=0;i<pack.cards;i++){
+    if(Math.random() < KAKLDN_PULL_CHANCE){
+      currentPulls.push(KAKLDN);
+      continue;
+    }
     const tier = pickTier(pack.odds);
     currentPulls.push(pickPlayerForTier(tier));
   }
