@@ -497,6 +497,38 @@
   .pov-log .entry.score{color:var(--good); font-weight:700;}
   .pov-log .entry.miss{color:var(--bad);}
   .pov-actions{display:flex; flex-direction:column; gap:8px;}
+
+  /* ---- Shot timing meter ---- */
+  .meter-wrap{margin:10px 0;}
+  .meter-track{
+    position:relative; height:16px; background:var(--panel2); border:1px solid var(--line);
+    border-radius:8px; overflow:hidden; margin-bottom:8px;
+  }
+  .meter-zone{position:absolute; top:0; bottom:0; background:rgba(40,199,111,0.4); border-left:2px solid var(--good); border-right:2px solid var(--good);}
+  .meter-marker{
+    position:absolute; top:-3px; bottom:-3px; width:4px; background:#fff;
+    box-shadow:0 0 10px rgba(255,255,255,0.9); border-radius:2px; transform:translateX(-2px);
+  }
+  .heat-row{display:flex; align-items:center; gap:4px; font-size:12px; color:var(--muted); min-height:18px; margin-bottom:2px;}
+  .heat-row .flame{opacity:0.25; filter:grayscale(1);}
+  .heat-row .flame.lit{opacity:1; filter:none; animation:flameFlicker 1s ease-in-out infinite;}
+  @keyframes flameFlicker{0%,100%{transform:scale(1);} 50%{transform:scale(1.15);}}
+  .heat-row .heat-label{color:var(--accent2); font-weight:800; margin-left:4px;}
+
+  /* ---- Trophy Case ---- */
+  .trophy-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  @media(max-width:520px){.trophy-grid{grid-template-columns:1fr;}}
+  .trophy-card{
+    display:flex; align-items:center; gap:10px; border-radius:12px; padding:10px 12px;
+    border:1px solid var(--line); background:var(--panel2);
+  }
+  .trophy-card.unlocked{border-color:rgba(255,212,71,0.5); background:linear-gradient(135deg, rgba(255,212,71,0.1), rgba(255,122,26,0.06));}
+  .trophy-card .ticon{font-size:24px; filter:grayscale(1); opacity:0.4;}
+  .trophy-card.unlocked .ticon{filter:none; opacity:1;}
+  .trophy-card .tinfo{flex:1;}
+  .trophy-card .tinfo b{font-size:13px; display:block;}
+  .trophy-card .tinfo span{font-size:11px; color:var(--muted);}
+  .trophy-card.unlocked .tinfo b{color:var(--gold);}
 </style>
 </head>
 <body>
@@ -713,6 +745,10 @@
     </div>
     <div id="standingsWrap"></div>
     <div id="playoffsWrap"></div>
+
+    <h2 class="section-title" style="font-size:16px;">Trophy Case</h2>
+    <p class="hint">Milestones you unlock as you play — each one pays out a coin bonus the moment you earn it.</p>
+    <div class="trophy-grid" id="trophyGrid"></div>
   </section>
 
   <!-- CAREER -->
@@ -756,12 +792,17 @@
     <span class="close-x" onclick="closeCareerModal()">✕</span>
     <h2 id="careerModalTitle" style="margin-top:0;">Career Game</h2>
     <div class="pov-player-strip" id="careerPlayerStrip"></div>
+    <div class="heat-row" id="careerHeatRow"></div>
     <div class="scoreboard" style="margin:6px 0;">
       <div><div id="careerMyScore">0</div></div>
       <div class="vs">-</div>
       <div><div id="careerOppScore">0</div><div class="q" id="careerQuarterText">Q1</div></div>
     </div>
     <div class="pov-log" id="careerLog"></div>
+    <div class="meter-wrap" id="careerMeterWrap" style="display:none;">
+      <div class="meter-track"><div class="meter-zone" id="careerMeterZone"></div><div class="meter-marker" id="careerMeterMarker"></div></div>
+      <button class="primary" onclick="releaseCareerMeter()">🎯 Release!</button>
+    </div>
     <div class="pov-actions" id="careerActions">
       <button class="secondary" onclick="careerAction('jumper')">🎯 Pull-Up Jumper</button>
       <button class="secondary" onclick="careerAction('drive')">⚡ Drive to the Rim</button>
@@ -830,12 +871,17 @@
     <span class="close-x" onclick="closePovModal()">✕</span>
     <h2 id="povTitle" style="margin-top:0;">POV Mode</h2>
     <div class="pov-player-strip" id="povPlayerStrip"></div>
+    <div class="heat-row" id="povHeatRow"></div>
     <div class="scoreboard" style="margin:6px 0;">
       <div><div id="povMyScore">0</div></div>
       <div class="vs">-</div>
       <div><div id="povOppScore">0</div><div class="q" id="povQuarterText">Q1</div></div>
     </div>
     <div class="pov-log" id="povLog"></div>
+    <div class="meter-wrap" id="povMeterWrap" style="display:none;">
+      <div class="meter-track"><div class="meter-zone" id="povMeterZone"></div><div class="meter-marker" id="povMeterMarker"></div></div>
+      <button class="primary" onclick="releasePovMeter()">🎯 Release!</button>
+    </div>
     <div class="pov-actions" id="povActions">
       <button class="secondary" onclick="povAction('jumper')">🎯 Pull-Up Jumper</button>
       <button class="secondary" onclick="povAction('drive')">⚡ Drive to the Rim</button>
@@ -983,7 +1029,7 @@ function defaultState(){
   return {coins:5000, collection:{}, roster:[null,null,null,null,null], lastDaily:0, wins:0, losses:0, leagueConf:'East', league:null,
     badgeInventory:{}, equippedBadges:{}, perks:{}, career:null, customPlayers:[],
     avatar:{skin:'#C68642', hair:'short', hairColor:'#2C1B18', accessory:'none', team:'LAL'},
-    playerProgress:{}, playerGrowth:{}};
+    playerProgress:{}, playerGrowth:{}, achievements:{}};
 }
 function loadState(){
   try{
@@ -1018,7 +1064,7 @@ function switchTab(view){
   if(view==='roster'){ renderRoster(); renderCustomCreator(); renderCustomPlayersList(); renderDevSelect(); }
   if(view==='play') renderPlay();
   if(view==='shop'){ renderShop(); renderBadgeShop(); renderPerkShop(); renderEquipUI(); }
-  if(view==='league') renderLeague();
+  if(view==='league'){ renderLeague(); renderTrophyCase(); }
   if(view==='career') renderCareer();
 }
 
@@ -1134,6 +1180,7 @@ function buyBadge(key){
   if(state.coins < b.cost){ showToast('Not enough coins for that badge!'); return; }
   state.coins -= b.cost;
   state.badgeInventory[key] = (state.badgeInventory[key]||0)+1;
+  if(Object.keys(state.badgeInventory).filter(k=>state.badgeInventory[k]>0).length>=5) unlockAchievement('fiveBadges');
   saveState(); refreshTopbar(); renderBadgeShop(); renderEquipUI();
   showToast(`Bought ${b.label}! Equip it on a player below.`);
 }
@@ -1317,6 +1364,8 @@ function revealPack(){
     const grid = document.getElementById('revealGrid');
     grid.innerHTML = currentPulls.map((p,i)=>`<div class="reveal-slot" id="rslot${i}">${cardHTML(p)}</div>`).join('');
     currentPulls.forEach(p=>addToCollection(p.id));
+    unlockAchievement('firstPack');
+    if(currentPulls.some(p=>p.rarity==='Diamond')) unlockAchievement('diamondPull');
     saveState();
     currentPulls.forEach((p,i)=>{
       setTimeout(()=>{
@@ -1496,6 +1545,7 @@ function finishGame(myTotal, oppTotal, lineup){
   const reward = coinRewardFor(win);
   state.coins += reward;
   if(win) state.wins++; else state.losses++;
+  if(win){ unlockAchievement('firstWin'); if(state.wins>=10) unlockAchievement('tenWins'); }
   opponentLocked = false;
   const findBtn = document.getElementById('findOpponentBtn');
   findBtn.disabled = false;
@@ -1578,7 +1628,7 @@ function startPov(playerId){
   povState = {
     controlled, support, supportRating, oppRating, oppDefense,
     quarter:1, possessionsLeft:3, possessionsPerQuarter:3,
-    myScore:0, oppScore:0, userPoints:0, userAssists:0, done:false, transitioning:false
+    myScore:0, oppScore:0, userPoints:0, userAssists:0, done:false, transitioning:false, heat:0
   };
   document.getElementById('povTitle').textContent = `POV — ${controlled.name}`;
   document.getElementById('povPlayerStrip').innerHTML = `Controlling <b>${controlled.name}</b> (${controlled.pos}, ${controlled.ovr} OVR) vs <b>${cpuTeam.city} ${cpuTeam.name}</b>. Make the calls on your possessions — everything else plays out automatically.`;
@@ -1587,6 +1637,7 @@ function startPov(playerId){
   document.getElementById('povDoneBtn').style.display = 'none';
   document.getElementById('povModal').classList.add('open');
   setPovButtonsEnabled(true);
+  renderHeatRow('pov', 0);
   startPovQuarter();
 }
 function closePovModal(){
@@ -1595,20 +1646,42 @@ function closePovModal(){
 function setPovButtonsEnabled(enabled){
   document.querySelectorAll('#povActions button').forEach(b=>b.disabled = !enabled);
 }
+function renderHeatRow(prefix, heat){
+  const row = document.getElementById(prefix+'HeatRow');
+  if(!row) return;
+  const flames = [0,1,2].map(i=>`<span class="flame${i<Math.min(heat,3)?' lit':''}">🔥</span>`).join('');
+  row.innerHTML = heat>=3 ? `${flames}<span class="heat-label">ON FIRE!</span>` : (heat>0 ? flames : '');
+}
 function povAction(type){
   if(!povState || povState.done || povState.transitioning) return;
+  if(type==='dish'){ resolvePovAction('dish', 0, ''); return; }
+  document.getElementById('povActions').style.display = 'none';
+  const p = povState.controlled;
+  const attrForZone = type==='jumper' ? effAttr(p,'shooting') : effAttr(p,'speed');
+  const zoneWidth = clamp(0.16 + (attrForZone-55)*0.0045, 0.16, 0.52);
+  const zoneCenter = clamp(0.5 + (Math.random()*0.2-0.1), zoneWidth/2, 1-zoneWidth/2);
+  startShotMeter('pov', zoneCenter, zoneWidth, (grade, modifier)=>{
+    document.getElementById('povActions').style.display = 'flex';
+    resolvePovAction(type, modifier, grade);
+  });
+}
+function resolvePovAction(type, timingMod, grade){
+  const povGradeTag = grade==='PERFECT' ? '💥 Perfect release! ' : grade==='GOOD' ? '👍 Good timing — ' : grade==='OFF' ? '😬 Rushed release — ' : '';
   const p = povState.controlled;
   const def = povState.oppDefense;
+  const heatBonus = povState.heat>=3 ? 0.06 : 0;
+  let made = false;
   if(type==='jumper'){
     const isThree = Math.random()<0.35;
     const base = isThree?0.32:0.48;
-    const prob = clamp(base + (effAttr(p,'shooting')-def)*0.006, 0.12, 0.85);
+    const prob = clamp(base + (effAttr(p,'shooting')-def)*0.006 + timingMod + heatBonus, 0.06, 0.97);
     if(Math.random()<prob){
+      made = true;
       const pts = isThree?3:2;
       povState.myScore += pts; povState.userPoints += pts;
-      logPov(`🎯 ${p.name} drills the ${isThree?'three-pointer':'jumper'}! +${pts}`, 'score');
+      logPov(`${povGradeTag}🎯 ${p.name} drills the ${isThree?'three-pointer':'jumper'}! +${pts}`, 'score');
     }else{
-      logPov(`🎯 ${p.name}'s jumper rims out.`, 'miss');
+      logPov(`${povGradeTag}🎯 ${p.name}'s jumper rims out.`, 'miss');
     }
   }else if(type==='drive'){
     const turnoverProb = clamp(0.14 - (effAttr(p,'speed')-70)*0.0015, 0.04, 0.2);
@@ -1616,14 +1689,15 @@ function povAction(type){
       logPov(`⚡ ${p.name} drives but travels — turnover!`, 'miss');
     }else{
       const fastbreakBonus = (state.perks && state.perks.fastbreak) ? 0.08 : 0;
-      const prob = clamp(0.58 + (effAttr(p,'speed')-def)*0.006 + fastbreakBonus, 0.25, 0.95);
+      const prob = clamp(0.58 + (effAttr(p,'speed')-def)*0.006 + fastbreakBonus + timingMod + heatBonus, 0.1, 0.98);
       if(Math.random()<prob){
+        made = true;
         const andOne = Math.random()<0.15;
         const pts = andOne?3:2;
         povState.myScore += pts; povState.userPoints += pts;
-        logPov(`⚡ ${p.name} attacks the rim${andOne?' and gets fouled — AND ONE!':'!'} +${pts}`, 'score');
+        logPov(`${povGradeTag}⚡ ${p.name} attacks the rim${andOne?' and gets fouled — AND ONE!':'!'} +${pts}`, 'score');
       }else{
-        logPov(`⚡ ${p.name} gets stuffed at the rim.`, 'miss');
+        logPov(`${povGradeTag}⚡ ${p.name} gets stuffed at the rim.`, 'miss');
       }
     }
   }else if(type==='dish'){
@@ -1633,6 +1707,7 @@ function povAction(type){
     }else{
       const prob = clamp(0.55 + (effAttr(p,'playmaking')-def)*0.006, 0.25, 0.92);
       if(Math.random()<prob){
+        made = true;
         const pts = Math.random()<0.3 ? 3 : 2;
         povState.myScore += pts; povState.userAssists += 1;
         logPov(`🤝 ${p.name} finds a teammate wide open for the assist! +${pts}`, 'score');
@@ -1640,6 +1715,15 @@ function povAction(type){
         logPov(`🤝 ${p.name}'s teammate can't finish the pass.`, 'miss');
       }
     }
+  }
+  if(type!=='dish'){
+    if(made){
+      povState.heat++;
+      if(povState.heat===3) logPov(`🔥 ${p.name} is heating up!`, 'score');
+    }else{
+      povState.heat = 0;
+    }
+    renderHeatRow('pov', povState.heat);
   }
   povState.possessionsLeft--;
   renderPovScoreboard();
@@ -1672,6 +1756,7 @@ function closePovModalAndShowResults(){
   const reward = coinRewardFor(win);
   state.coins += reward;
   if(win) state.wins++; else state.losses++;
+  if(win){ unlockAchievement('firstWin'); if(state.wins>=10) unlockAchievement('tenWins'); }
   opponentLocked = false;
   const findBtn = document.getElementById('findOpponentBtn');
   findBtn.disabled = false;
@@ -1707,6 +1792,43 @@ function closePovModalAndShowResults(){
   document.getElementById('resultPanel').scrollIntoView({behavior:'smooth', block:'nearest'});
   if(leveledUpNames.length) showToast(`⬆ ${leveledUpNames.join(', ')} leveled up! Spend points in Roster > Player Development.`);
 }
+
+/* ============================= SHOT TIMING METER ============================= */
+let activeMeter = null;
+function startShotMeter(prefix, zoneCenter, zoneWidth, onRelease){
+  const zoneStart = clamp(zoneCenter - zoneWidth/2, 0, 1-zoneWidth);
+  const zoneEnd = zoneStart + zoneWidth;
+  activeMeter = {pos:0, dir:1, speed:0.045, zoneStart, zoneEnd, onRelease, prefix};
+  const zoneEl = document.getElementById(prefix+'MeterZone');
+  zoneEl.style.left = (zoneStart*100)+'%';
+  zoneEl.style.width = ((zoneEnd-zoneStart)*100)+'%';
+  document.getElementById(prefix+'MeterWrap').style.display = 'block';
+  activeMeter.intervalId = setInterval(()=>{
+    if(!activeMeter) return;
+    activeMeter.pos += activeMeter.dir*activeMeter.speed;
+    if(activeMeter.pos>=1){ activeMeter.pos=1; activeMeter.dir=-1; }
+    if(activeMeter.pos<=0){ activeMeter.pos=0; activeMeter.dir=1; }
+    const markerEl = document.getElementById(prefix+'MeterMarker');
+    if(markerEl) markerEl.style.left = (activeMeter.pos*100)+'%';
+  }, 16);
+}
+function releaseMeter(prefix){
+  if(!activeMeter || activeMeter.prefix!==prefix) return;
+  clearInterval(activeMeter.intervalId);
+  const {pos, zoneStart, zoneEnd, onRelease} = activeMeter;
+  document.getElementById(prefix+'MeterWrap').style.display = 'none';
+  const halfZone = (zoneEnd-zoneStart)/2;
+  const centerDist = Math.abs(pos - (zoneStart+zoneEnd)/2);
+  let grade, modifier;
+  if(centerDist <= halfZone*0.4){ grade='PERFECT'; modifier=0.18; unlockAchievement('perfectRelease'); }
+  else if(pos>=zoneStart && pos<=zoneEnd){ grade='GOOD'; modifier=0.08; }
+  else if(centerDist <= halfZone*2.2){ grade='OK'; modifier=0; }
+  else { grade='OFF'; modifier=-0.16; }
+  activeMeter = null;
+  onRelease(grade, modifier);
+}
+function releasePovMeter(){ releaseMeter('pov'); }
+function releaseCareerMeter(){ releaseMeter('career'); }
 
 /* ============================= LEAGUE ============================= */
 function teamTopFiveRating(teamId){
@@ -1828,7 +1950,9 @@ function simulatePlayoffs(){
   const east = bracketForConf('East');
   const west = bracketForConf('West');
   const finals = (east && west) ? playSeries(east.champion, west.champion) : null;
-  state.league.playoffs = {east, west, finals, champion: finals ? finals.winner : null};
+  const champion = finals ? finals.winner : null;
+  state.league.playoffs = {east, west, finals, champion};
+  if(champion && champion.isUser) unlockAchievement('champion');
   saveState();
   renderPlayoffsHTML();
   showToast('Playoffs simulated!');
@@ -1914,6 +2038,7 @@ function awardCareerXP(xp){
     leveledUp++;
   }
   const newStage = careerStageInfo(careerOvr()).name;
+  if(newStage==='Legend') unlockAchievement('legend');
   return {leveledUp, stageChanged: newStage!==oldStage, newStage};
 }
 
@@ -2021,7 +2146,7 @@ function playCareerGame(){
   careerGame = {
     opponentTeam: team, oppRating, oppDefense, supportRating,
     quarter:1, possessionsLeft:3, possessionsPerQuarter:3,
-    myScore:0, oppScore:0, userPoints:0, userAssists:0, done:false, transitioning:false
+    myScore:0, oppScore:0, userPoints:0, userAssists:0, done:false, transitioning:false, heat:0
   };
   document.getElementById('careerModalTitle').textContent = `Career Game — ${state.career.name}`;
   document.getElementById('careerPlayerStrip').innerHTML = `Playing as <b>${state.career.name}</b> (${state.career.pos}, ${ovr} OVR) vs <b>${team.city} ${team.name}</b>.`;
@@ -2030,6 +2155,7 @@ function playCareerGame(){
   document.getElementById('careerDoneBtn').style.display = 'none';
   document.getElementById('careerModal').classList.add('open');
   setCareerButtonsEnabled(true);
+  renderHeatRow('career', 0);
   startCareerQuarter();
 }
 function setCareerButtonsEnabled(enabled){
@@ -2058,32 +2184,49 @@ function startCareerQuarter(){
 }
 function careerAction(type){
   if(!careerGame || careerGame.done || careerGame.transitioning) return;
+  if(type==='dish'){ resolveCareerAction('dish', 0, ''); return; }
+  document.getElementById('careerActions').style.display = 'none';
+  const attrs = state.career.attrs;
+  const attrForZone = type==='jumper' ? attrs.shooting : attrs.speed;
+  const zoneWidth = clamp(0.16 + (attrForZone-55)*0.0045, 0.16, 0.52);
+  const zoneCenter = clamp(0.5 + (Math.random()*0.2-0.1), zoneWidth/2, 1-zoneWidth/2);
+  startShotMeter('career', zoneCenter, zoneWidth, (grade, modifier)=>{
+    document.getElementById('careerActions').style.display = 'flex';
+    resolveCareerAction(type, modifier, grade);
+  });
+}
+function resolveCareerAction(type, timingMod, grade){
+  const careerGradeTag = grade==='PERFECT' ? '💥 Perfect release! ' : grade==='GOOD' ? '👍 Good timing — ' : grade==='OFF' ? '😬 Rushed release — ' : '';
   const attrs = state.career.attrs;
   const def = careerGame.oppDefense;
+  const heatBonus = careerGame.heat>=3 ? 0.06 : 0;
+  let made = false;
   if(type==='jumper'){
     const isThree = Math.random()<0.35;
     const base = isThree?0.32:0.48;
-    const prob = clamp(base + (attrs.shooting-def)*0.006, 0.12, 0.85);
+    const prob = clamp(base + (attrs.shooting-def)*0.006 + timingMod + heatBonus, 0.06, 0.97);
     if(Math.random()<prob){
+      made = true;
       const pts = isThree?3:2;
       careerGame.myScore += pts; careerGame.userPoints += pts;
-      logCareer(`🎯 ${state.career.name} drills the ${isThree?'three-pointer':'jumper'}! +${pts}`, 'score');
+      logCareer(`${careerGradeTag}🎯 ${state.career.name} drills the ${isThree?'three-pointer':'jumper'}! +${pts}`, 'score');
     }else{
-      logCareer(`🎯 ${state.career.name}'s jumper rims out.`, 'miss');
+      logCareer(`${careerGradeTag}🎯 ${state.career.name}'s jumper rims out.`, 'miss');
     }
   }else if(type==='drive'){
     const turnoverProb = clamp(0.14 - (attrs.speed-70)*0.0015, 0.04, 0.2);
     if(Math.random()<turnoverProb){
       logCareer(`⚡ ${state.career.name} drives but travels — turnover!`, 'miss');
     }else{
-      const prob = clamp(0.58 + (attrs.speed-def)*0.006, 0.25, 0.92);
+      const prob = clamp(0.58 + (attrs.speed-def)*0.006 + timingMod + heatBonus, 0.1, 0.98);
       if(Math.random()<prob){
+        made = true;
         const andOne = Math.random()<0.15;
         const pts = andOne?3:2;
         careerGame.myScore += pts; careerGame.userPoints += pts;
-        logCareer(`⚡ ${state.career.name} attacks the rim${andOne?' and gets fouled — AND ONE!':'!'} +${pts}`, 'score');
+        logCareer(`${careerGradeTag}⚡ ${state.career.name} attacks the rim${andOne?' and gets fouled — AND ONE!':'!'} +${pts}`, 'score');
       }else{
-        logCareer(`⚡ ${state.career.name} gets stuffed at the rim.`, 'miss');
+        logCareer(`${careerGradeTag}⚡ ${state.career.name} gets stuffed at the rim.`, 'miss');
       }
     }
   }else if(type==='dish'){
@@ -2093,6 +2236,7 @@ function careerAction(type){
     }else{
       const prob = clamp(0.55 + (attrs.playmaking-def)*0.006, 0.25, 0.92);
       if(Math.random()<prob){
+        made = true;
         const pts = Math.random()<0.3 ? 3 : 2;
         careerGame.myScore += pts; careerGame.userAssists += 1;
         logCareer(`🤝 ${state.career.name} finds a teammate wide open for the assist! +${pts}`, 'score');
@@ -2100,6 +2244,15 @@ function careerAction(type){
         logCareer(`🤝 ${state.career.name}'s teammate can't finish the pass.`, 'miss');
       }
     }
+  }
+  if(type!=='dish'){
+    if(made){
+      careerGame.heat++;
+      if(careerGame.heat===3) logCareer(`🔥 ${state.career.name} is heating up!`, 'score');
+    }else{
+      careerGame.heat = 0;
+    }
+    renderHeatRow('career', careerGame.heat);
   }
   careerGame.possessionsLeft--;
   renderCareerScoreboard();
@@ -2137,7 +2290,7 @@ function closeCareerModalAndShowResults(){
   state.coins += coins;
   const c = state.career;
   c.gamesPlayed++;
-  if(win) c.wins++; else c.losses++;
+  if(win){ c.wins++; unlockAchievement('firstWin'); if(state.wins+c.wins>=10) unlockAchievement('tenWins'); } else { c.losses++; }
   const levelResult = awardCareerXP(xp);
   c.log = c.log || [];
   c.log.push({
@@ -2215,6 +2368,7 @@ function createCustomPlayer(){
   const player = {id, name, pos, ovr, team, rarity: tierForOvr(ovr), evil:false, isCustom:true, archetype:selectedCustomArchetype, ...attrs};
   state.customPlayers.push(player);
   state.collection[id] = 1;
+  unlockAchievement('customPlayerCreated');
   saveState();
   nameInput.value = '';
   showToast(`${name} has joined your Binder!`);
@@ -2326,6 +2480,7 @@ function setAvatarField(key, value){
 }
 function saveAvatar(){
   state.avatar = {...editingAvatar};
+  unlockAchievement('avatarMade');
   saveState();
   renderGlobalAvatar();
   closeAvatarModal();
@@ -2408,6 +2563,41 @@ function spendGrowthPoint(id, attrKey){
   renderDevPanel();
   renderRoster();
   showToast('Stat upgraded!');
+}
+
+/* ============================= TROPHY CASE (ACHIEVEMENTS) ============================= */
+const ACHIEVEMENTS = {
+  firstPack:{label:'Pack Opener', icon:'📦', desc:'Open your first pack.', coins:100},
+  diamondPull:{label:'Diamond Hands', icon:'💎', desc:'Pull a Diamond-tier card from a pack.', coins:300},
+  firstWin:{label:'First Win', icon:'🏀', desc:'Win your first game.', coins:150},
+  tenWins:{label:'Decorated', icon:'🏅', desc:'Win 10 games total.', coins:500},
+  perfectRelease:{label:'Money Shot', icon:'🎯', desc:'Land a PERFECT shot release on the timing meter.', coins:150},
+  customPlayerCreated:{label:'Creator', icon:'✏️', desc:'Create your own custom player.', coins:150},
+  avatarMade:{label:'Self Portrait', icon:'🧑‍🎨', desc:'Customize and save your avatar.', coins:100},
+  fiveBadges:{label:'Decked Out', icon:'🎖️', desc:'Own 5 different skill badges.', coins:250},
+  champion:{label:'Champion', icon:'🏆', desc:'Win the NBA Finals in League mode.', coins:1000},
+  legend:{label:'Legend', icon:'👑', desc:'Reach Legend tier (90+ OVR) in Career Mode.', coins:800}
+};
+function unlockAchievement(id){
+  if(!ACHIEVEMENTS[id] || (state.achievements && state.achievements[id])) return;
+  if(!state.achievements) state.achievements = {};
+  state.achievements[id] = Date.now();
+  state.coins += ACHIEVEMENTS[id].coins;
+  saveState();
+  refreshTopbar();
+  showToast(`🏆 Achievement unlocked: ${ACHIEVEMENTS[id].label}! +${ACHIEVEMENTS[id].coins} coins`);
+  renderTrophyCase();
+}
+function renderTrophyCase(){
+  const grid = document.getElementById('trophyGrid');
+  if(!grid) return;
+  grid.innerHTML = Object.entries(ACHIEVEMENTS).map(([id,a])=>{
+    const unlocked = !!(state.achievements && state.achievements[id]);
+    return `<div class="trophy-card ${unlocked?'unlocked':''}">
+      <div class="ticon">${a.icon}</div>
+      <div class="tinfo"><b>${a.label}</b><span>${a.desc}</span></div>
+    </div>`;
+  }).join('');
 }
 
 /* ============================= INIT ============================= */
