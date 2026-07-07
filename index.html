@@ -242,6 +242,63 @@
   }
   button.stat-up-btn:disabled{opacity:0.35; cursor:not-allowed;}
 
+  /* ---- Live Action mode ---- */
+  .live-box{
+    position:relative; width:100%; max-width:420px; background:#0a0f1a;
+    border-radius:18px; overflow:hidden; box-shadow:var(--shadow-lg);
+    display:flex; flex-direction:column; touch-action:none;
+  }
+  .live-hud{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 14px; background:rgba(0,0,0,0.5); position:relative; z-index:5;
+  }
+  .live-hud-score{font-size:26px; font-weight:900; color:var(--accent2);}
+  .live-hud-clock{font-size:20px; font-weight:800; color:var(--text); font-variant-numeric:tabular-nums;}
+  .live-hud-clock.urgent{color:var(--bad); animation:clockPulse .6s ease infinite;}
+  @keyframes clockPulse{0%,100%{opacity:1;} 50%{opacity:0.4;}}
+  .live-canvas-wrap{position:relative; width:100%; aspect-ratio:3/4; background:#0a0f1a;}
+  #liveCanvas{width:100%; height:100%; display:block;}
+  .live-flash{position:absolute; inset:0; pointer-events:none; opacity:0; background:#fff;}
+  .live-flash.hit{animation:flashGood .35s ease;}
+  .live-flash.miss{animation:flashBad .35s ease;}
+  @keyframes flashGood{0%{opacity:0.55; background:var(--gold);} 100%{opacity:0;}}
+  @keyframes flashBad{0%{opacity:0.4; background:var(--bad);} 100%{opacity:0;}}
+  .live-canvas-wrap.shake{animation:liveShake .3s ease;}
+  @keyframes liveShake{
+    0%,100%{transform:translate(0,0);} 20%{transform:translate(-6px,2px);}
+    40%{transform:translate(5px,-3px);} 60%{transform:translate(-4px,3px);} 80%{transform:translate(3px,-2px);}
+  }
+  .live-banner{
+    position:absolute; top:14px; left:50%; transform:translateX(-50%); z-index:6;
+    background:rgba(10,15,26,0.85); border:1px solid var(--accent2); color:var(--accent2);
+    font-weight:900; font-size:15px; padding:6px 16px; border-radius:20px;
+    animation:bannerPop .3s cubic-bezier(.2,.9,.3,1.3);
+  }
+  .live-controls{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 20px; background:rgba(0,0,0,0.5); position:relative; z-index:5;
+  }
+  .live-joystick{
+    width:88px; height:88px; border-radius:50%; background:rgba(255,255,255,0.08);
+    border:2px solid rgba(255,255,255,0.2); position:relative; touch-action:none;
+  }
+  .live-joystick-nub{
+    width:38px; height:38px; border-radius:50%; background:var(--accent);
+    box-shadow:0 2px 10px rgba(255,122,26,0.6);
+    position:absolute; top:25px; left:25px; pointer-events:none;
+  }
+  .live-shoot-btn{
+    width:88px; height:88px; border-radius:50%; background:linear-gradient(135deg, var(--accent2), var(--accent));
+    color:#1a0e00; font-weight:900; font-size:14px; border:none; cursor:pointer;
+    box-shadow:0 6px 18px rgba(255,122,26,0.4); transition:transform .1s;
+  }
+  .live-shoot-btn:active{transform:scale(0.9);}
+  .live-start-overlay, .live-end-overlay{
+    position:absolute; inset:0; z-index:10; background:rgba(6,9,16,0.92);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; padding:24px;
+  }
+
   /* ---- Avatar ---- */
   .avatar-circle{
     width:34px; height:34px; border-radius:50%; background:var(--panel2);
@@ -682,11 +739,17 @@
       </div>
       <button class="primary" id="playBtn" onclick="startGame()" disabled>Complete your roster to play</button>
       <button class="secondary" id="povBtn" style="width:100%;margin-top:8px;" onclick="openPovPicker()" disabled>🎮 Play POV — control a player yourself</button>
+      <button class="secondary" id="liveBtn" style="width:100%;margin-top:8px;" onclick="openLivePicker()" disabled>🕹️ Play Live — move &amp; shoot yourself</button>
     </div>
     <div class="panel" id="povPickerPanel" style="display:none;">
       <h3 style="margin-top:0;font-size:14px;">Choose who you want to control</h3>
       <div class="card-grid" id="povPickerGrid"></div>
       <button class="secondary" style="margin-top:10px;" onclick="closePovPicker()">Cancel</button>
+    </div>
+    <div class="panel" id="livePickerPanel" style="display:none;">
+      <h3 style="margin-top:0;font-size:14px;">Choose who you want to control</h3>
+      <div class="card-grid" id="livePickerGrid"></div>
+      <button class="secondary" style="margin-top:10px;" onclick="closeLivePicker()">Cancel</button>
     </div>
     <div class="panel" id="resultPanel" style="display:none;">
       <div class="result-banner" id="resultBanner"></div>
@@ -821,6 +884,40 @@
       <select id="avatarTeamSelect" style="width:100%;" onchange="setAvatarField('team', this.value)"></select>
     </div>
     <button class="primary" onclick="saveAvatar()">Save Avatar</button>
+  </div>
+</div>
+
+<!-- Live Action mode (canvas, move-and-shoot) -->
+<div class="modal-overlay" id="liveModal">
+  <div class="live-box">
+    <div class="live-hud">
+      <div class="live-hud-left">
+        <span class="close-x" id="liveCloseBtn" onclick="closeLiveModal()">✕</span>
+      </div>
+      <div class="live-hud-score" id="liveScoreText">0</div>
+      <div class="live-hud-clock" id="liveClockText">60</div>
+    </div>
+    <div class="live-canvas-wrap">
+      <canvas id="liveCanvas" width="360" height="480"></canvas>
+      <div class="live-flash" id="liveFlash"></div>
+      <div class="live-banner" id="liveBanner" style="display:none;"></div>
+    </div>
+    <div class="live-controls">
+      <div class="live-joystick" id="liveJoystickBase">
+        <div class="live-joystick-nub" id="liveJoystickNub"></div>
+      </div>
+      <button class="live-shoot-btn" id="liveShootBtn">SHOOT</button>
+    </div>
+    <div class="live-start-overlay" id="liveStartOverlay">
+      <h2 style="margin:0 0 6px;">Live Action</h2>
+      <p class="hint" style="margin-bottom:16px;">Move with the joystick (or arrow keys/WASD) and tap SHOOT near the hoop. Score as much as you can in 60 seconds — a defender will try to contest you!</p>
+      <button class="primary" onclick="startLiveSession()">Tip Off 🏀</button>
+    </div>
+    <div class="live-end-overlay" id="liveEndOverlay" style="display:none;">
+      <h2 id="liveEndTitle" style="margin:0 0 6px;">Time's Up!</h2>
+      <p id="liveEndSummary" class="hint" style="margin-bottom:16px;"></p>
+      <button class="primary" onclick="closeLiveModal()">Done</button>
+    </div>
   </div>
 </div>
 
@@ -1429,6 +1526,7 @@ function renderPlay(){
   document.getElementById('myRatingText').textContent = rating ? rating+' OVR' : 'Roster incomplete';
   const btn = document.getElementById('playBtn');
   const povBtn = document.getElementById('povBtn');
+  const liveBtn = document.getElementById('liveBtn');
   const findBtn = document.getElementById('findOpponentBtn');
   findBtn.disabled = opponentLocked;
   findBtn.textContent = opponentLocked ? '🔒 Finish this game to switch opponents' : '🔀 Find Opponent';
@@ -1436,18 +1534,22 @@ function renderPlay(){
     btn.disabled = true;
     btn.textContent = 'Complete your roster to play (5 players)';
     povBtn.disabled = true;
+    liveBtn.disabled = true;
   }else if(!cpuTeam){
     btn.disabled = true;
     btn.textContent = 'Find an opponent first';
     povBtn.disabled = true;
+    liveBtn.disabled = true;
   }else{
     btn.disabled = false;
     btn.textContent = 'Tip Off 🏀';
     povBtn.disabled = false;
+    liveBtn.disabled = false;
   }
   document.getElementById('scoreboard').style.display='none';
   document.getElementById('resultPanel').style.display='none';
   document.getElementById('povPickerPanel').style.display='none';
+  document.getElementById('livePickerPanel').style.display='none';
 }
 
 function simQuarter(myR, oppR){
@@ -2409,6 +2511,356 @@ function spendGrowthPoint(id, attrKey){
   renderRoster();
   showToast('Stat upgraded!');
 }
+
+/* ============================= LIVE ACTION MODE (move & shoot) ============================= */
+const LIVE_W = 360, LIVE_H = 480;
+let liveState = null;
+let liveCtx = null;
+let liveRAF = null;
+let liveKeys = {};
+let liveJoyVec = {x:0, y:0};
+let liveAudioCtx = null;
+
+function getLiveAudioCtx(){
+  if(!liveAudioCtx){
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(AC) liveAudioCtx = new AC();
+  }
+  if(liveAudioCtx && liveAudioCtx.state==='suspended') liveAudioCtx.resume();
+  return liveAudioCtx;
+}
+function playLiveTone(startFreq, endFreq, dur, type){
+  const ctx = getLiveAudioCtx();
+  if(!ctx) return;
+  try{
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(startFreq, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(endFreq,1), ctx.currentTime+dur);
+    gain.gain.setValueAtTime(0.16, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+dur);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime+dur);
+  }catch(e){}
+}
+function playSwish(){ playLiveTone(700, 1500, 0.25, 'sine'); }
+function playClank(){ playLiveTone(220, 80, 0.18, 'square'); }
+function playBuzzer(){ playLiveTone(110, 60, 0.7, 'sawtooth'); }
+function playSteal(){ playLiveTone(1400, 700, 0.14, 'triangle'); }
+
+function liveProject(cx, cy){
+  const t = cy/100;
+  const screenY = LIVE_H - 20 - t*(LIVE_H-140);
+  const perspectiveWidth = (LIVE_W-20) - t*(LIVE_W-140);
+  const centerX = LIVE_W/2;
+  const screenX = centerX + (cx-50)/50 * (perspectiveWidth/2);
+  const scale = 1 - t*0.55;
+  return {x:screenX, y:screenY, scale};
+}
+function lerp(a,b,t){ return a+(b-a)*t; }
+
+function openLivePicker(){
+  const lineup = myLineup();
+  if(lineup.length<5 || !cpuTeam) return;
+  document.getElementById('livePickerPanel').style.display='block';
+  const grid = document.getElementById('livePickerGrid');
+  grid.innerHTML = lineup.map(p=>`<div onclick="startLive('${p.id}')">${cardHTML(p)}</div>`).join('');
+  document.getElementById('livePickerPanel').scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+function closeLivePicker(){
+  document.getElementById('livePickerPanel').style.display='none';
+}
+function startLive(playerId){
+  closeLivePicker();
+  const controlled = getPlayer(playerId);
+  const oppSkill = Math.round(cpuLineup.reduce((s,p)=>s+p.ovr,0)/cpuLineup.length);
+  liveState = {
+    controlled, oppSkill,
+    player:{cx:50, cy:25},
+    defender:{cx:50, cy:75},
+    ball:{anim:null},
+    score:0, timeLeft:60, running:false,
+    shotsMade:0, shotsAttempted:0, cooldownUntil:0, lastTs:0, lastStealCheck:0
+  };
+  liveCtx = document.getElementById('liveCanvas').getContext('2d');
+  document.getElementById('liveScoreText').textContent = '0';
+  document.getElementById('liveClockText').textContent = '60';
+  document.getElementById('liveClockText').classList.remove('urgent');
+  document.getElementById('liveStartOverlay').style.display='flex';
+  document.getElementById('liveEndOverlay').style.display='none';
+  document.getElementById('liveModal').classList.add('open');
+  renderLiveFrame();
+}
+function startLiveSession(){
+  document.getElementById('liveStartOverlay').style.display='none';
+  getLiveAudioCtx();
+  liveState.running = true;
+  liveState.lastTs = 0;
+  liveRAF = requestAnimationFrame(liveTick);
+}
+function closeLiveModal(){
+  if(liveState) liveState.running = false;
+  if(liveRAF) cancelAnimationFrame(liveRAF);
+  document.getElementById('liveModal').classList.remove('open');
+}
+
+function getLiveKeyboardVec(){
+  let x=0,y=0;
+  if(liveKeys['arrowleft']||liveKeys['a']) x-=1;
+  if(liveKeys['arrowright']||liveKeys['d']) x+=1;
+  if(liveKeys['arrowup']||liveKeys['w']) y+=1;
+  if(liveKeys['arrowdown']||liveKeys['s']) y-=1;
+  return {x,y};
+}
+function getLiveInputVec(){
+  const kb = getLiveKeyboardVec();
+  let x = kb.x + liveJoyVec.x, y = kb.y + liveJoyVec.y;
+  const mag = Math.hypot(x,y);
+  if(mag>1){ x/=mag; y/=mag; }
+  return {x,y};
+}
+
+function liveShoot(){
+  if(!liveState || !liveState.running || liveState.ball.anim) return;
+  if(Date.now() < liveState.cooldownUntil) return;
+  const p = liveState.player;
+  const dist = Math.hypot(p.cx-50, 96-p.cy);
+  const isThree = dist > 38;
+  const defDist = Math.hypot(p.cx-liveState.defender.cx, p.cy-liveState.defender.cy);
+  const contested = defDist < 14;
+  const shooterAttr = effAttr(liveState.controlled, 'shooting');
+  let prob = clamp(0.92 - dist*0.010, 0.15, 0.92);
+  prob += (shooterAttr-75)*0.005;
+  if(contested) prob -= 0.18 + (liveState.oppSkill-75)*0.003;
+  prob = clamp(prob, 0.06, 0.95);
+  const made = Math.random() < prob;
+  liveState.shotsAttempted++;
+  liveState.ball.anim = {
+    start: performance.now(), duration: 550,
+    from:{cx:p.cx, cy:p.cy}, to:{cx:50, cy:96},
+    made, isThree
+  };
+}
+function triggerLiveFlash(kind){
+  const flash = document.getElementById('liveFlash');
+  flash.classList.remove('hit','miss');
+  void flash.offsetWidth;
+  flash.classList.add(kind==='miss' ? 'miss' : 'hit');
+}
+function triggerLiveBanner(text){
+  const banner = document.getElementById('liveBanner');
+  banner.textContent = text;
+  banner.style.display = 'block';
+  banner.classList.remove('live-banner');
+  void banner.offsetWidth;
+  banner.classList.add('live-banner');
+  clearTimeout(triggerLiveBanner._t);
+  triggerLiveBanner._t = setTimeout(()=>{ banner.style.display='none'; }, 1100);
+}
+function triggerLiveShake(){
+  const wrap = document.querySelector('.live-canvas-wrap');
+  wrap.classList.remove('shake');
+  void wrap.offsetWidth;
+  wrap.classList.add('shake');
+}
+
+function updateLive(dt, now){
+  const s = liveState;
+  s.timeLeft -= dt;
+  if(s.timeLeft <= 0){
+    s.timeLeft = 0;
+    document.getElementById('liveClockText').textContent = '0';
+    endLiveSession();
+    return;
+  }
+  document.getElementById('liveClockText').textContent = Math.ceil(s.timeLeft);
+  document.getElementById('liveClockText').classList.toggle('urgent', s.timeLeft<=10);
+
+  const canMove = now >= s.cooldownUntil;
+  if(canMove && !s.ball.anim){
+    const inp = getLiveInputVec();
+    const speedAttr = effAttr(s.controlled, 'speed');
+    const speed = 26 + (speedAttr-50)*0.55;
+    s.player.cx = clamp(s.player.cx + inp.x*speed*dt, 6, 94);
+    s.player.cy = clamp(s.player.cy + inp.y*speed*dt, 6, 94);
+  }
+
+  if(!s.ball.anim){
+    const dx = s.player.cx - s.defender.cx, dy = s.player.cy - s.defender.cy;
+    const d = Math.hypot(dx,dy) || 1;
+    const defSpeed = Math.min(22 + (s.oppSkill-70)*0.4, 30);
+    s.defender.cx = clamp(s.defender.cx + (dx/d)*defSpeed*dt, 6, 94);
+    s.defender.cy = clamp(s.defender.cy + (dy/d)*defSpeed*dt, 6, 94);
+
+    if(canMove && now - s.lastStealCheck > 150){
+      s.lastStealCheck = now;
+      const dist = Math.hypot(s.player.cx-s.defender.cx, s.player.cy-s.defender.cy);
+      if(dist < 7){
+        const stealChance = clamp(0.04 + (s.oppSkill-75)*0.002, 0.02, 0.12);
+        if(Math.random() < stealChance){
+          s.cooldownUntil = now + 900;
+          s.player.cx = clamp(s.player.cx + (Math.random()*30-15), 10, 90);
+          s.player.cy = clamp(s.player.cy - 12, 10, 90);
+          triggerLiveBanner('🧤 STRIPPED!');
+          triggerLiveShake();
+          playSteal();
+        }
+      }
+    }
+  } else {
+    const anim = s.ball.anim;
+    const t = clamp((now-anim.start)/anim.duration, 0, 1);
+    if(t>=1){
+      if(anim.made){
+        s.score += anim.isThree?3:2;
+        s.shotsMade++;
+        document.getElementById('liveScoreText').textContent = s.score;
+        triggerLiveFlash('hit');
+        triggerLiveBanner(anim.isThree ? '🎯 THREE!' : '💥 BUCKET!');
+        playSwish();
+      }else{
+        triggerLiveFlash('miss');
+        triggerLiveBanner('Off the rim!');
+        playClank();
+      }
+      s.ball.anim = null;
+    }
+  }
+}
+
+function renderLiveFrame(){
+  const ctx = liveCtx;
+  if(!ctx) return;
+  const s = liveState;
+  ctx.clearRect(0,0,LIVE_W,LIVE_H);
+  const bgGrad = ctx.createLinearGradient(0,0,0,LIVE_H);
+  bgGrad.addColorStop(0,'#1a2436'); bgGrad.addColorStop(1,'#0d1420');
+  ctx.fillStyle = bgGrad; ctx.fillRect(0,0,LIVE_W,LIVE_H);
+
+  const c1 = liveProject(2,4), c2 = liveProject(98,4), c3 = liveProject(98,97), c4 = liveProject(2,97);
+  ctx.beginPath();
+  ctx.moveTo(c1.x,c1.y); ctx.lineTo(c2.x,c2.y); ctx.lineTo(c3.x,c3.y); ctx.lineTo(c4.x,c4.y); ctx.closePath();
+  ctx.fillStyle = '#3d2c19'; ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2; ctx.stroke();
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.setLineDash([6,6]); ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(LIVE_W/2, liveProject(50,58).y, 130, 46, 0, Math.PI*0.1, Math.PI*0.9);
+  ctx.stroke();
+  ctx.restore();
+
+  const hoopP = liveProject(50,97);
+  ctx.fillStyle = '#e8e8ee';
+  ctx.fillRect(hoopP.x-20, hoopP.y-30, 40, 5);
+  ctx.strokeStyle = '#ff5c1a'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.ellipse(hoopP.x, hoopP.y-8, 15*hoopP.scale, 4.5*hoopP.scale, 0, 0, Math.PI*2); ctx.stroke();
+
+  if(!s){ return; }
+
+  function drawToken(cx, cy, color, label){
+    const p = liveProject(cx,cy);
+    const r = 15*p.scale;
+    ctx.beginPath(); ctx.ellipse(p.x, p.y+r*0.85, r*0.9, r*0.32, 0, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2);
+    ctx.fillStyle = color; ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(9, r*0.75)}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, p.x, p.y);
+  }
+
+  const oppColor = (cpuTeam && cpuTeam.colors[0]) || '#888';
+  const playerColor = (TEAMS_BY_ID[s.controlled.team] && TEAMS_BY_ID[s.controlled.team].colors[0]) || '#ff7a1a';
+  const entities = [
+    {cy:s.defender.cy, draw:()=>drawToken(s.defender.cx, s.defender.cy, oppColor, 'D')},
+    {cy:s.player.cy, draw:()=>drawToken(s.player.cx, s.player.cy, playerColor, 'Y')}
+  ].sort((a,b)=>a.cy-b.cy);
+  entities.forEach(e=>e.draw());
+
+  let ballCx = s.player.cx, ballCy = s.player.cy, arcHeight = 0;
+  if(s.ball.anim){
+    const t = clamp((performance.now()-s.ball.anim.start)/s.ball.anim.duration, 0, 1);
+    ballCx = lerp(s.ball.anim.from.cx, s.ball.anim.to.cx, t);
+    ballCy = lerp(s.ball.anim.from.cy, s.ball.anim.to.cy, t);
+    arcHeight = Math.sin(t*Math.PI) * 70;
+  }
+  const bp = liveProject(ballCx, ballCy);
+  ctx.beginPath(); ctx.arc(bp.x, bp.y-arcHeight, 7*bp.scale, 0, Math.PI*2);
+  ctx.fillStyle = '#e67e22'; ctx.fill();
+  ctx.strokeStyle = '#3a2a10'; ctx.lineWidth = 1.5; ctx.stroke();
+}
+
+function liveTick(timestamp){
+  if(!liveState || !liveState.running) return;
+  if(!liveState.lastTs) liveState.lastTs = timestamp;
+  const dt = Math.min(0.05, (timestamp - liveState.lastTs)/1000);
+  liveState.lastTs = timestamp;
+  updateLive(dt, timestamp);
+  renderLiveFrame();
+  if(liveState.running) liveRAF = requestAnimationFrame(liveTick);
+}
+
+function endLiveSession(){
+  liveState.running = false;
+  if(liveRAF) cancelAnimationFrame(liveRAF);
+  playBuzzer();
+  const coins = 50 + liveState.score*8;
+  const xp = 20 + liveState.score*3;
+  state.coins += coins;
+  const leveled = awardPlayerXP(liveState.controlled.id, xp) > 0;
+  saveState(); refreshTopbar();
+  document.getElementById('liveEndTitle').textContent = `Final Score: ${liveState.score}`;
+  document.getElementById('liveEndSummary').textContent =
+    `${liveState.shotsMade}/${liveState.shotsAttempted} shooting — +${coins} coins, +${xp} XP` +
+    (leveled ? ` — ⬆ ${liveState.controlled.name} leveled up!` : '');
+  document.getElementById('liveEndOverlay').style.display = 'flex';
+}
+
+document.addEventListener('keydown', e=>{
+  const k = e.key.toLowerCase();
+  if(['arrowleft','arrowright','arrowup','arrowdown','w','a','s','d',' '].includes(k)){
+    liveKeys[k] = true;
+    if(k===' ' && liveState && liveState.running){ e.preventDefault(); liveShoot(); }
+  }
+});
+document.addEventListener('keyup', e=>{ liveKeys[e.key.toLowerCase()] = false; });
+
+(function setupLiveJoystick(){
+  const base = document.getElementById('liveJoystickBase');
+  const nub = document.getElementById('liveJoystickNub');
+  let active = false, center = {x:0,y:0};
+  function start(e){
+    active = true;
+    const rect = base.getBoundingClientRect();
+    center = {x:rect.left+rect.width/2, y:rect.top+rect.height/2};
+    move(e);
+  }
+  function move(e){
+    if(!active) return;
+    const pt = e.touches ? e.touches[0] : e;
+    let dx = pt.clientX-center.x, dy = pt.clientY-center.y;
+    const maxR = 25;
+    const dist = Math.hypot(dx,dy);
+    if(dist>maxR){ dx = dx/dist*maxR; dy = dy/dist*maxR; }
+    nub.style.left = (25+dx)+'px'; nub.style.top = (25+dy)+'px';
+    liveJoyVec = {x:dx/maxR, y:-dy/maxR};
+  }
+  function end(){
+    active = false;
+    nub.style.left = '25px'; nub.style.top = '25px';
+    liveJoyVec = {x:0,y:0};
+  }
+  base.addEventListener('touchstart', e=>{ e.preventDefault(); start(e); }, {passive:false});
+  base.addEventListener('touchmove', e=>{ e.preventDefault(); move(e); }, {passive:false});
+  base.addEventListener('touchend', end);
+  base.addEventListener('mousedown', start);
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+  document.getElementById('liveShootBtn').addEventListener('click', liveShoot);
+})();
 
 /* ============================= INIT ============================= */
 populateTeamFilter();
