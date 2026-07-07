@@ -290,9 +290,24 @@
   .live-shoot-btn{
     width:88px; height:88px; border-radius:50%; background:linear-gradient(135deg, var(--accent2), var(--accent));
     color:#1a0e00; font-weight:900; font-size:14px; border:none; cursor:pointer;
-    box-shadow:0 6px 18px rgba(255,122,26,0.4); transition:transform .1s;
+    box-shadow:0 6px 18px rgba(255,122,26,0.4); transition:transform .1s, background .15s;
   }
   .live-shoot-btn:active{transform:scale(0.9);}
+  .live-shoot-btn.steal-mode{background:linear-gradient(135deg, #4dd0e1, #0288a8); box-shadow:0 6px 18px rgba(2,136,168,0.45);}
+  .live-shoot-btn:disabled{background:#3a3f4d; color:#7a8091; box-shadow:none; cursor:not-allowed;}
+  .live-sprint-btn{
+    width:60px; height:60px; border-radius:50%; background:var(--panel2);
+    border:2px solid var(--line); color:var(--text); font-weight:800; font-size:10px; cursor:pointer;
+    transition:transform .1s, background .15s, border-color .15s;
+  }
+  .live-sprint-btn:active, .live-sprint-btn.held{
+    transform:scale(0.92); background:rgba(255,122,26,0.25); border-color:var(--accent2); color:var(--accent2);
+  }
+  .live-meter-overlay{
+    position:absolute; left:12px; right:12px; bottom:14px; z-index:8;
+    background:rgba(6,9,16,0.9); border-radius:10px; padding:10px 12px;
+  }
+  .live-meter-overlay button.primary{width:100%;}
   .live-start-overlay, .live-end-overlay{
     position:absolute; inset:0; z-index:10; background:rgba(6,9,16,0.92);
     display:flex; flex-direction:column; align-items:center; justify-content:center;
@@ -950,36 +965,44 @@
   </div>
 </div>
 
-<!-- Live Action mode (canvas, move-and-shoot) -->
+<!-- Live Action mode (canvas, full 1-on-1 with possession) -->
 <div class="modal-overlay" id="liveModal">
   <div class="live-box">
     <div class="live-hud">
       <div class="live-hud-left">
         <span class="close-x" id="liveCloseBtn" onclick="closeLiveModal()">✕</span>
       </div>
-      <div class="live-hud-score" id="liveScoreText">0</div>
+      <div class="live-hud-score" id="liveScoreText">You 0 — 0 CPU</div>
       <div class="live-hud-clock" id="liveClockText">60</div>
     </div>
     <div class="live-canvas-wrap">
-      <canvas id="liveCanvas" width="360" height="480"></canvas>
+      <canvas id="liveCanvas" width="320" height="520"></canvas>
       <div class="live-flash" id="liveFlash"></div>
       <div class="live-banner" id="liveBanner" style="display:none;"></div>
+      <div class="live-meter-overlay" id="liveMeterWrap" style="display:none;">
+        <div class="meter-track"><div class="meter-zone" id="liveMeterZone"></div><div class="meter-marker" id="liveMeterMarker"></div></div>
+        <button class="primary" onclick="releaseLiveMeter()">🎯 Release!</button>
+      </div>
     </div>
-    <div class="live-controls">
+    <div class="live-controls" id="liveControlsRow">
       <div class="live-joystick" id="liveJoystickBase">
         <div class="live-joystick-nub" id="liveJoystickNub"></div>
       </div>
+      <button class="live-sprint-btn" id="liveSprintBtn">SPRINT</button>
       <button class="live-shoot-btn" id="liveShootBtn">SHOOT</button>
     </div>
     <div class="live-start-overlay" id="liveStartOverlay">
-      <h2 style="margin:0 0 6px;">Live Action</h2>
-      <p class="hint" style="margin-bottom:16px;">Move with the joystick (or arrow keys/WASD) and tap SHOOT near the hoop. Score as much as you can in 60 seconds — a defender will try to contest you!</p>
+      <h2 style="margin:0 0 6px;">Live Action — 1-on-1</h2>
+      <p class="hint" style="margin-bottom:16px;">Move with the joystick (or WASD/arrows), hold SPRINT (or Shift) for a burst of speed. Press SHOOT and release in the sweet spot to score — the button becomes STEAL when the CPU has the ball. First to outscore the other when the clock hits 0 wins!</p>
       <button class="primary" onclick="startLiveSession()">Tip Off 🏀</button>
     </div>
     <div class="live-end-overlay" id="liveEndOverlay" style="display:none;">
       <h2 id="liveEndTitle" style="margin:0 0 6px;">Time's Up!</h2>
       <p id="liveEndSummary" class="hint" style="margin-bottom:16px;"></p>
-      <button class="primary" onclick="closeLiveModal()">Done</button>
+      <div style="display:flex; gap:10px; width:100%;">
+        <button class="secondary" style="flex:1;" onclick="closeLiveModal()">Done</button>
+        <button class="primary" style="flex:1;" onclick="replayLiveSession()">Play Again</button>
+      </div>
     </div>
   </div>
 </div>
@@ -2702,13 +2725,17 @@ function spendGrowthPoint(id, attrKey){
   showToast('Stat upgraded!');
 }
 
-/* ============================= LIVE ACTION MODE (move & shoot) ============================= */
-const LIVE_W = 360, LIVE_H = 480;
+/* ============================= LIVE ACTION MODE (full 1-on-1 with possession) ============================= */
+const LIVE_W = 320, LIVE_H = 520;
+const LIVE_HOOP_TOP = {x:160, y:34};
+const LIVE_HOOP_BOTTOM = {x:160, y:486};
+const LIVE_BOUNDS = {minX:34, maxX:286, minY:34, maxY:486};
 let liveState = null;
 let liveCtx = null;
 let liveRAF = null;
 let liveKeys = {};
 let liveJoyVec = {x:0, y:0};
+let liveSprintHeld = false;
 let liveAudioCtx = null;
 
 function getLiveAudioCtx(){
@@ -2739,15 +2766,6 @@ function playClank(){ playLiveTone(220, 80, 0.18, 'square'); }
 function playBuzzer(){ playLiveTone(110, 60, 0.7, 'sawtooth'); }
 function playSteal(){ playLiveTone(1400, 700, 0.14, 'triangle'); }
 
-function liveProject(cx, cy){
-  const t = cy/100;
-  const screenY = LIVE_H - 20 - t*(LIVE_H-140);
-  const perspectiveWidth = (LIVE_W-20) - t*(LIVE_W-140);
-  const centerX = LIVE_W/2;
-  const screenX = centerX + (cx-50)/50 * (perspectiveWidth/2);
-  const scale = 1 - t*0.55;
-  return {x:screenX, y:screenY, scale};
-}
 function lerp(a,b,t){ return a+(b-a)*t; }
 
 function openLivePicker(){
@@ -2761,30 +2779,55 @@ function openLivePicker(){
 function closeLivePicker(){
   document.getElementById('livePickerPanel').style.display='none';
 }
+function newLiveState(controlled, oppSkill){
+  return {
+    controlled, oppSkill,
+    possession:'player',
+    player:{x:160, y:380},
+    cpu:{x:160, y:160},
+    ball:{anim:null},
+    playerScore:0, cpuScore:0,
+    timeLeft:60,
+    running:false,
+    shotsMade:0, shotsAttempted:0,
+    stealCooldownUntil:0,
+    lastTs:0,
+    lastCpuStealCheck:0,
+    cpuJukeUntil:0, cpuJukeVec:{x:0,y:0},
+    cpuShotCooldownUntil:0,
+    possessionChangedAt:0
+  };
+}
 function startLive(playerId){
   closeLivePicker();
   const controlled = getPlayer(playerId);
   const oppSkill = Math.round(cpuLineup.reduce((s,p)=>s+p.ovr,0)/cpuLineup.length);
-  liveState = {
-    controlled, oppSkill,
-    player:{cx:50, cy:25},
-    defender:{cx:50, cy:75},
-    ball:{anim:null},
-    score:0, timeLeft:60, running:false,
-    shotsMade:0, shotsAttempted:0, cooldownUntil:0, lastTs:0, lastStealCheck:0
-  };
+  liveState = newLiveState(controlled, oppSkill);
   liveCtx = document.getElementById('liveCanvas').getContext('2d');
-  document.getElementById('liveScoreText').textContent = '0';
+  document.getElementById('liveScoreText').textContent = 'You 0 — 0 CPU';
   document.getElementById('liveClockText').textContent = '60';
   document.getElementById('liveClockText').classList.remove('urgent');
   document.getElementById('liveStartOverlay').style.display='flex';
   document.getElementById('liveEndOverlay').style.display='none';
   document.getElementById('liveModal').classList.add('open');
+  updateLiveActionButton();
   renderLiveFrame();
 }
 function startLiveSession(){
   document.getElementById('liveStartOverlay').style.display='none';
   getLiveAudioCtx();
+  liveState.running = true;
+  liveState.lastTs = 0;
+  liveRAF = requestAnimationFrame(liveTick);
+}
+function replayLiveSession(){
+  const controlled = liveState.controlled, oppSkill = liveState.oppSkill;
+  liveState = newLiveState(controlled, oppSkill);
+  document.getElementById('liveScoreText').textContent = 'You 0 — 0 CPU';
+  document.getElementById('liveClockText').textContent = '60';
+  document.getElementById('liveClockText').classList.remove('urgent');
+  document.getElementById('liveEndOverlay').style.display='none';
+  updateLiveActionButton();
   liveState.running = true;
   liveState.lastTs = 0;
   liveRAF = requestAnimationFrame(liveTick);
@@ -2799,8 +2842,8 @@ function getLiveKeyboardVec(){
   let x=0,y=0;
   if(liveKeys['arrowleft']||liveKeys['a']) x-=1;
   if(liveKeys['arrowright']||liveKeys['d']) x+=1;
-  if(liveKeys['arrowup']||liveKeys['w']) y+=1;
-  if(liveKeys['arrowdown']||liveKeys['s']) y-=1;
+  if(liveKeys['arrowup']||liveKeys['w']) y-=1;
+  if(liveKeys['arrowdown']||liveKeys['s']) y+=1;
   return {x,y};
 }
 function getLiveInputVec(){
@@ -2811,27 +2854,97 @@ function getLiveInputVec(){
   return {x,y};
 }
 
+function updateLiveActionButton(){
+  const btn = document.getElementById('liveShootBtn');
+  if(!liveState) return;
+  if(liveState.possession==='player'){
+    btn.textContent = 'SHOOT';
+    btn.classList.remove('steal-mode');
+    btn.disabled = false;
+  }else{
+    btn.textContent = 'STEAL';
+    btn.classList.add('steal-mode');
+    btn.disabled = Date.now() < liveState.stealCooldownUntil;
+  }
+}
+function liveActionPress(){
+  if(!liveState || !liveState.running) return;
+  if(liveState.possession==='player') liveShoot();
+  else liveAttemptSteal();
+}
+
 function liveShoot(){
-  if(!liveState || !liveState.running || liveState.ball.anim) return;
-  if(Date.now() < liveState.cooldownUntil) return;
-  const p = liveState.player;
-  const dist = Math.hypot(p.cx-50, 96-p.cy);
-  const isThree = dist > 38;
-  const defDist = Math.hypot(p.cx-liveState.defender.cx, p.cy-liveState.defender.cy);
-  const contested = defDist < 14;
-  const shooterAttr = effAttr(liveState.controlled, 'shooting');
-  let prob = clamp(0.92 - dist*0.010, 0.15, 0.92);
-  prob += (shooterAttr-75)*0.005;
-  if(contested) prob -= 0.18 + (liveState.oppSkill-75)*0.003;
-  prob = clamp(prob, 0.06, 0.95);
+  const s = liveState;
+  if(!s || s.possession!=='player' || s.ball.anim) return;
+  document.getElementById('liveControlsRow').style.display = 'none';
+  const dist = Math.hypot(s.player.x-LIVE_HOOP_TOP.x, s.player.y-LIVE_HOOP_TOP.y);
+  const isThree = dist > 150;
+  const shooterAttr = effAttr(s.controlled, 'shooting');
+  const zoneWidth = clamp(0.42 - dist*0.0011 + (shooterAttr-65)*0.0035, 0.12, 0.5);
+  const zoneCenter = clamp(0.5 + (Math.random()*0.16-0.08), zoneWidth/2, 1-zoneWidth/2);
+  s.pendingShot = {dist, isThree};
+  startShotMeter('live', zoneCenter, zoneWidth, (grade, modifier)=>{
+    document.getElementById('liveControlsRow').style.display = 'flex';
+    resolveLiveShot(grade, modifier);
+  });
+}
+function releaseLiveMeter(){ releaseMeter('live'); }
+function resolveLiveShot(grade, timingMod){
+  const s = liveState;
+  const {dist, isThree} = s.pendingShot;
+  const defDist = Math.hypot(s.player.x-s.cpu.x, s.player.y-s.cpu.y);
+  const contested = defDist < 42;
+  const shooterAttr = effAttr(s.controlled, 'shooting');
+  let prob = clamp(0.9 - dist*0.0022 + (shooterAttr-75)*0.005 + timingMod, 0.06, 0.95);
+  if(contested) prob -= 0.16 + (s.oppSkill-75)*0.002;
+  prob = clamp(prob, 0.05, 0.96);
   const made = Math.random() < prob;
-  liveState.shotsAttempted++;
-  liveState.ball.anim = {
-    start: performance.now(), duration: 550,
-    from:{cx:p.cx, cy:p.cy}, to:{cx:50, cy:96},
-    made, isThree
+  s.shotsAttempted++;
+  s.ball.anim = {
+    start: performance.now(), duration: 500,
+    from:{x:s.player.x, y:s.player.y}, to:{x:LIVE_HOOP_TOP.x, y:LIVE_HOOP_TOP.y},
+    made, isThree, who:'player', grade
   };
 }
+
+function liveAttemptSteal(){
+  const s = liveState;
+  if(!s || s.possession!=='cpu' || Date.now() < s.stealCooldownUntil) return;
+  const dist = Math.hypot(s.player.x-s.cpu.x, s.player.y-s.cpu.y);
+  s.stealCooldownUntil = Date.now() + 1100;
+  updateLiveActionButton();
+  setTimeout(updateLiveActionButton, 1150);
+  if(dist > 46){
+    triggerLiveBanner('Too far to strip!');
+    return;
+  }
+  const defAttr = effAttr(s.controlled, 'defense');
+  const prob = clamp(0.32 + (defAttr-s.oppSkill)*0.006, 0.08, 0.65);
+  if(Math.random() < prob){
+    turnoverToPlayer('🧤 STOLEN!');
+  }else{
+    triggerLiveBanner('Reach-in — no dice!');
+  }
+}
+
+function turnoverToPlayer(bannerText){
+  const s = liveState;
+  s.possession = 'player';
+  s.possessionChangedAt = performance.now();
+  s.player.x = clamp(s.cpu.x, LIVE_BOUNDS.minX, LIVE_BOUNDS.maxX);
+  s.player.y = clamp(s.cpu.y + 20, LIVE_BOUNDS.minY, LIVE_BOUNDS.maxY);
+  updateLiveActionButton();
+  if(bannerText){ triggerLiveBanner(bannerText); triggerLiveShake(); playSteal(); }
+}
+function turnoverToCpu(){
+  const s = liveState;
+  s.possession = 'cpu';
+  s.possessionChangedAt = performance.now();
+  s.cpu.x = clamp(s.player.x, LIVE_BOUNDS.minX, LIVE_BOUNDS.maxX);
+  s.cpu.y = clamp(s.player.y - 20, LIVE_BOUNDS.minY, LIVE_BOUNDS.maxY);
+  updateLiveActionButton();
+}
+
 function triggerLiveFlash(kind){
   const flash = document.getElementById('liveFlash');
   flash.classList.remove('hit','miss');
@@ -2855,6 +2968,98 @@ function triggerLiveShake(){
   wrap.classList.add('shake');
 }
 
+function updateCpuOffense(dt, now){
+  const s = liveState;
+  const cpu = s.cpu;
+  const target = LIVE_HOOP_BOTTOM;
+  const distToHoop = Math.hypot(cpu.x-target.x, cpu.y-target.y);
+  const defDist = Math.hypot(cpu.x-s.player.x, cpu.y-s.player.y);
+
+  if(now > s.cpuJukeUntil && defDist < 70 && Math.random() < 0.02){
+    s.cpuJukeUntil = now + 400 + Math.random()*400;
+    s.cpuJukeVec = {x:(Math.random()*2-1), y:(Math.random()*0.6-0.1)};
+  }
+
+  let dx = target.x-cpu.x, dy = target.y-cpu.y;
+  const d = Math.hypot(dx,dy) || 1;
+  let moveX = dx/d, moveY = dy/d;
+  if(now < s.cpuJukeUntil){
+    moveX = lerp(moveX, s.cpuJukeVec.x, 0.6);
+    moveY = lerp(moveY, s.cpuJukeVec.y, 0.6);
+  }
+  const speed = 24 + (s.oppSkill-70)*0.35;
+  const inShootingRange = distToHoop < 150;
+  if(!inShootingRange || defDist > 55){
+    cpu.x = clamp(cpu.x + moveX*speed*dt, LIVE_BOUNDS.minX, LIVE_BOUNDS.maxX);
+    cpu.y = clamp(cpu.y + moveY*speed*dt, LIVE_BOUNDS.minY, LIVE_BOUNDS.maxY);
+  }
+
+  if(!s.ball.anim && now > s.cpuShotCooldownUntil && distToHoop < 155 && now - s.possessionChangedAt > 500){
+    const shootChance = distToHoop < 60 ? 0.045 : 0.02;
+    if(Math.random() < shootChance){
+      cpuShoot(distToHoop, defDist);
+    }
+  }
+}
+function cpuShoot(dist, defDist){
+  const s = liveState;
+  s.cpuShotCooldownUntil = performance.now() + 1500;
+  const isThree = dist > 150;
+  const contested = defDist < 45;
+  let prob = clamp(0.75 - dist*0.0022 + (s.oppSkill-75)*0.005, 0.1, 0.85);
+  if(contested) prob -= 0.15 + (effAttr(s.controlled,'defense')-75)*0.002;
+  prob = clamp(prob, 0.05, 0.9);
+  const made = Math.random() < prob;
+  s.ball.anim = {
+    start: performance.now(), duration: 500,
+    from:{x:s.cpu.x, y:s.cpu.y}, to:{x:LIVE_HOOP_BOTTOM.x, y:LIVE_HOOP_BOTTOM.y},
+    made, isThree, who:'cpu'
+  };
+}
+
+function updatePlayerOnDefense(dt){
+  const s = liveState;
+  const inp = getLiveInputVec();
+  const speedAttr = effAttr(s.controlled, 'speed');
+  const sprintMult = liveSprintHeld ? 1.55 : 1;
+  const speed = (24 + (speedAttr-50)*0.5) * sprintMult;
+  s.player.x = clamp(s.player.x + inp.x*speed*dt, LIVE_BOUNDS.minX, LIVE_BOUNDS.maxX);
+  s.player.y = clamp(s.player.y + inp.y*speed*dt, LIVE_BOUNDS.minY, LIVE_BOUNDS.maxY);
+}
+function updatePlayerOnOffense(dt){
+  const s = liveState;
+  if(s.ball.anim) return;
+  const inp = getLiveInputVec();
+  const speedAttr = effAttr(s.controlled, 'speed');
+  const sprintMult = liveSprintHeld ? 1.55 : 1;
+  const speed = (24 + (speedAttr-50)*0.5) * sprintMult;
+  s.player.x = clamp(s.player.x + inp.x*speed*dt, LIVE_BOUNDS.minX, LIVE_BOUNDS.maxX);
+  s.player.y = clamp(s.player.y + inp.y*speed*dt, LIVE_BOUNDS.minY, LIVE_BOUNDS.maxY);
+
+  const now = performance.now();
+  const dist = Math.hypot(s.player.x-s.cpu.x, s.player.y-s.cpu.y);
+  if(now - s.lastCpuStealCheck > 200){
+    s.lastCpuStealCheck = now;
+    if(dist < 34 && now - s.possessionChangedAt > 500){
+      const stealChance = clamp(0.02 + (s.oppSkill-75)*0.0015, 0.01, 0.08);
+      if(Math.random() < stealChance){
+        turnoverToCpu();
+        triggerLiveBanner('🧤 STRIPPED!');
+        triggerLiveShake();
+        playSteal();
+      }
+    }
+  }
+}
+function updateCpuOnDefense(dt){
+  const s = liveState;
+  const dx = s.player.x-s.cpu.x, dy = s.player.y-s.cpu.y;
+  const d = Math.hypot(dx,dy) || 1;
+  const defSpeed = Math.min(22 + (s.oppSkill-70)*0.4, 30);
+  s.cpu.x = clamp(s.cpu.x + (dx/d)*defSpeed*dt, LIVE_BOUNDS.minX, LIVE_BOUNDS.maxX);
+  s.cpu.y = clamp(s.cpu.y + (dy/d)*defSpeed*dt, LIVE_BOUNDS.minY, LIVE_BOUNDS.maxY);
+}
+
 function updateLive(dt, now){
   const s = liveState;
   s.timeLeft -= dt;
@@ -2867,54 +3072,34 @@ function updateLive(dt, now){
   document.getElementById('liveClockText').textContent = Math.ceil(s.timeLeft);
   document.getElementById('liveClockText').classList.toggle('urgent', s.timeLeft<=10);
 
-  const canMove = now >= s.cooldownUntil;
-  if(canMove && !s.ball.anim){
-    const inp = getLiveInputVec();
-    const speedAttr = effAttr(s.controlled, 'speed');
-    const speed = 26 + (speedAttr-50)*0.55;
-    s.player.cx = clamp(s.player.cx + inp.x*speed*dt, 6, 94);
-    s.player.cy = clamp(s.player.cy + inp.y*speed*dt, 6, 94);
-  }
-
   if(!s.ball.anim){
-    const dx = s.player.cx - s.defender.cx, dy = s.player.cy - s.defender.cy;
-    const d = Math.hypot(dx,dy) || 1;
-    const defSpeed = Math.min(22 + (s.oppSkill-70)*0.4, 30);
-    s.defender.cx = clamp(s.defender.cx + (dx/d)*defSpeed*dt, 6, 94);
-    s.defender.cy = clamp(s.defender.cy + (dy/d)*defSpeed*dt, 6, 94);
-
-    if(canMove && now - s.lastStealCheck > 150){
-      s.lastStealCheck = now;
-      const dist = Math.hypot(s.player.cx-s.defender.cx, s.player.cy-s.defender.cy);
-      if(dist < 7){
-        const stealChance = clamp(0.04 + (s.oppSkill-75)*0.002, 0.02, 0.12);
-        if(Math.random() < stealChance){
-          s.cooldownUntil = now + 900;
-          s.player.cx = clamp(s.player.cx + (Math.random()*30-15), 10, 90);
-          s.player.cy = clamp(s.player.cy - 12, 10, 90);
-          triggerLiveBanner('🧤 STRIPPED!');
-          triggerLiveShake();
-          playSteal();
-        }
-      }
+    if(s.possession==='player'){
+      updatePlayerOnOffense(dt);
+      updateCpuOnDefense(dt);
+    }else{
+      updateCpuOffense(dt, now);
+      updatePlayerOnDefense(dt);
     }
-  } else {
+  }else{
     const anim = s.ball.anim;
     const t = clamp((now-anim.start)/anim.duration, 0, 1);
     if(t>=1){
+      const pts = anim.isThree?3:2;
       if(anim.made){
-        s.score += anim.isThree?3:2;
-        s.shotsMade++;
-        document.getElementById('liveScoreText').textContent = s.score;
+        if(anim.who==='player'){ s.playerScore += pts; s.shotsMade++; }
+        else s.cpuScore += pts;
+        document.getElementById('liveScoreText').textContent = `You ${s.playerScore} — ${s.cpuScore} CPU`;
         triggerLiveFlash('hit');
-        triggerLiveBanner(anim.isThree ? '🎯 THREE!' : '💥 BUCKET!');
+        const tag = anim.grade==='PERFECT' ? '💥 PERFECT ' : '';
+        triggerLiveBanner(`${tag}${anim.who==='player'?'You score':'CPU scores'}! +${pts}`);
         playSwish();
       }else{
         triggerLiveFlash('miss');
-        triggerLiveBanner('Off the rim!');
+        triggerLiveBanner(anim.who==='player' ? 'Off the rim!' : 'CPU misses!');
         playClank();
       }
       s.ball.anim = null;
+      if(anim.who==='player') turnoverToCpu(); else turnoverToPlayer(null);
     }
   }
 }
@@ -2928,57 +3113,64 @@ function renderLiveFrame(){
   bgGrad.addColorStop(0,'#1a2436'); bgGrad.addColorStop(1,'#0d1420');
   ctx.fillStyle = bgGrad; ctx.fillRect(0,0,LIVE_W,LIVE_H);
 
-  const c1 = liveProject(2,4), c2 = liveProject(98,4), c3 = liveProject(98,97), c4 = liveProject(2,97);
-  ctx.beginPath();
-  ctx.moveTo(c1.x,c1.y); ctx.lineTo(c2.x,c2.y); ctx.lineTo(c3.x,c3.y); ctx.lineTo(c4.x,c4.y); ctx.closePath();
-  ctx.fillStyle = '#3d2c19'; ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = '#3d2c19';
+  ctx.fillRect(LIVE_BOUNDS.minX, LIVE_BOUNDS.minY, LIVE_BOUNDS.maxX-LIVE_BOUNDS.minX, LIVE_BOUNDS.maxY-LIVE_BOUNDS.minY);
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2;
+  ctx.strokeRect(LIVE_BOUNDS.minX, LIVE_BOUNDS.minY, LIVE_BOUNDS.maxX-LIVE_BOUNDS.minX, LIVE_BOUNDS.maxY-LIVE_BOUNDS.minY);
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.beginPath(); ctx.moveTo(LIVE_BOUNDS.minX, LIVE_H/2); ctx.lineTo(LIVE_BOUNDS.maxX, LIVE_H/2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(LIVE_W/2, LIVE_H/2, 34, 0, Math.PI*2); ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+  ctx.strokeRect(110, LIVE_BOUNDS.minY, 100, 110);
+  ctx.strokeRect(110, LIVE_BOUNDS.maxY-110, 100, 110);
 
   ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.setLineDash([6,6]); ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.ellipse(LIVE_W/2, liveProject(50,58).y, 130, 46, 0, Math.PI*0.1, Math.PI*0.9);
-  ctx.stroke();
+  ctx.setLineDash([6,6]);
+  ctx.beginPath(); ctx.arc(LIVE_HOOP_TOP.x, LIVE_HOOP_TOP.y, 150, Math.PI*0.08, Math.PI*0.92); ctx.stroke();
+  ctx.beginPath(); ctx.arc(LIVE_HOOP_BOTTOM.x, LIVE_HOOP_BOTTOM.y, 150, Math.PI*1.08, Math.PI*1.92); ctx.stroke();
   ctx.restore();
 
-  const hoopP = liveProject(50,97);
-  ctx.fillStyle = '#e8e8ee';
-  ctx.fillRect(hoopP.x-20, hoopP.y-30, 40, 5);
-  ctx.strokeStyle = '#ff5c1a'; ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.ellipse(hoopP.x, hoopP.y-8, 15*hoopP.scale, 4.5*hoopP.scale, 0, 0, Math.PI*2); ctx.stroke();
+  function drawHoop(hx, hy, flip){
+    ctx.fillStyle = '#e8e8ee';
+    ctx.fillRect(hx-20, hy + (flip?6:-11), 40, 5);
+    ctx.strokeStyle = '#ff5c1a'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.ellipse(hx, hy, 15, 5, 0, 0, Math.PI*2); ctx.stroke();
+  }
+  drawHoop(LIVE_HOOP_TOP.x, LIVE_HOOP_TOP.y, false);
+  drawHoop(LIVE_HOOP_BOTTOM.x, LIVE_HOOP_BOTTOM.y, true);
 
-  if(!s){ return; }
+  if(!s) return;
 
-  function drawToken(cx, cy, color, label){
-    const p = liveProject(cx,cy);
-    const r = 15*p.scale;
-    ctx.beginPath(); ctx.ellipse(p.x, p.y+r*0.85, r*0.9, r*0.32, 0, 0, Math.PI*2);
+  function drawToken(x, y, color, label){
+    ctx.beginPath(); ctx.ellipse(x, y+13, 15, 5, 0, 0, Math.PI*2);
     ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fill();
-    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2);
+    ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI*2);
     ctx.fillStyle = color; ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2; ctx.stroke();
-    ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(9, r*0.75)}px sans-serif`;
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(label, p.x, p.y);
+    ctx.fillText(label, x, y);
   }
-
   const oppColor = (cpuTeam && cpuTeam.colors[0]) || '#888';
   const playerColor = (TEAMS_BY_ID[s.controlled.team] && TEAMS_BY_ID[s.controlled.team].colors[0]) || '#ff7a1a';
   const entities = [
-    {cy:s.defender.cy, draw:()=>drawToken(s.defender.cx, s.defender.cy, oppColor, 'D')},
-    {cy:s.player.cy, draw:()=>drawToken(s.player.cx, s.player.cy, playerColor, 'Y')}
-  ].sort((a,b)=>a.cy-b.cy);
+    {y:s.cpu.y, draw:()=>drawToken(s.cpu.x, s.cpu.y, oppColor, 'C')},
+    {y:s.player.y, draw:()=>drawToken(s.player.x, s.player.y, playerColor, 'Y')}
+  ].sort((a,b)=>a.y-b.y);
   entities.forEach(e=>e.draw());
 
-  let ballCx = s.player.cx, ballCy = s.player.cy, arcHeight = 0;
+  let bx = s.possession==='player' ? s.player.x : s.cpu.x;
+  let by = s.possession==='player' ? s.player.y : s.cpu.y;
+  let arcHeight = 0;
   if(s.ball.anim){
     const t = clamp((performance.now()-s.ball.anim.start)/s.ball.anim.duration, 0, 1);
-    ballCx = lerp(s.ball.anim.from.cx, s.ball.anim.to.cx, t);
-    ballCy = lerp(s.ball.anim.from.cy, s.ball.anim.to.cy, t);
-    arcHeight = Math.sin(t*Math.PI) * 70;
+    bx = lerp(s.ball.anim.from.x, s.ball.anim.to.x, t);
+    by = lerp(s.ball.anim.from.y, s.ball.anim.to.y, t);
+    arcHeight = Math.sin(t*Math.PI) * 60;
   }
-  const bp = liveProject(ballCx, ballCy);
-  ctx.beginPath(); ctx.arc(bp.x, bp.y-arcHeight, 7*bp.scale, 0, Math.PI*2);
+  ctx.beginPath(); ctx.arc(bx, by-arcHeight, 7, 0, Math.PI*2);
   ctx.fillStyle = '#e67e22'; ctx.fill();
   ctx.strokeStyle = '#3a2a10'; ctx.lineWidth = 1.5; ctx.stroke();
 }
@@ -2997,26 +3189,33 @@ function endLiveSession(){
   liveState.running = false;
   if(liveRAF) cancelAnimationFrame(liveRAF);
   playBuzzer();
-  const coins = 50 + liveState.score*8;
-  const xp = 20 + liveState.score*3;
+  const won = liveState.playerScore > liveState.cpuScore;
+  const tied = liveState.playerScore === liveState.cpuScore;
+  const coins = 40 + liveState.playerScore*7 + (won?60:0);
+  const xp = 15 + liveState.playerScore*3 + (won?20:0);
   state.coins += coins;
   const leveled = awardPlayerXP(liveState.controlled.id, xp) > 0;
   saveState(); refreshTopbar();
-  document.getElementById('liveEndTitle').textContent = `Final Score: ${liveState.score}`;
+  document.getElementById('liveEndTitle').textContent = tied ? "It's a Tie!" : (won ? 'You Win! 🏆' : 'CPU Wins');
   document.getElementById('liveEndSummary').textContent =
-    `${liveState.shotsMade}/${liveState.shotsAttempted} shooting — +${coins} coins, +${xp} XP` +
+    `Final: You ${liveState.playerScore} — ${liveState.cpuScore} CPU (${liveState.shotsMade}/${liveState.shotsAttempted} shooting) — +${coins} coins, +${xp} XP` +
     (leveled ? ` — ⬆ ${liveState.controlled.name} leveled up!` : '');
   document.getElementById('liveEndOverlay').style.display = 'flex';
 }
 
 document.addEventListener('keydown', e=>{
   const k = e.key.toLowerCase();
-  if(['arrowleft','arrowright','arrowup','arrowdown','w','a','s','d',' '].includes(k)){
+  if(['arrowleft','arrowright','arrowup','arrowdown','w','a','s','d',' ','shift'].includes(k)){
     liveKeys[k] = true;
-    if(k===' ' && liveState && liveState.running){ e.preventDefault(); liveShoot(); }
+    if(k==='shift') liveSprintHeld = true;
+    if(k===' ' && liveState && liveState.running){ e.preventDefault(); liveActionPress(); }
   }
 });
-document.addEventListener('keyup', e=>{ liveKeys[e.key.toLowerCase()] = false; });
+document.addEventListener('keyup', e=>{
+  const k = e.key.toLowerCase();
+  liveKeys[k] = false;
+  if(k==='shift') liveSprintHeld = false;
+});
 
 (function setupLiveJoystick(){
   const base = document.getElementById('liveJoystickBase');
@@ -3036,7 +3235,7 @@ document.addEventListener('keyup', e=>{ liveKeys[e.key.toLowerCase()] = false; }
     const dist = Math.hypot(dx,dy);
     if(dist>maxR){ dx = dx/dist*maxR; dy = dy/dist*maxR; }
     nub.style.left = (25+dx)+'px'; nub.style.top = (25+dy)+'px';
-    liveJoyVec = {x:dx/maxR, y:-dy/maxR};
+    liveJoyVec = {x:dx/maxR, y:dy/maxR};
   }
   function end(){
     active = false;
@@ -3049,7 +3248,16 @@ document.addEventListener('keyup', e=>{ liveKeys[e.key.toLowerCase()] = false; }
   base.addEventListener('mousedown', start);
   window.addEventListener('mousemove', move);
   window.addEventListener('mouseup', end);
-  document.getElementById('liveShootBtn').addEventListener('click', liveShoot);
+  document.getElementById('liveShootBtn').addEventListener('click', liveActionPress);
+
+  const sprintBtn = document.getElementById('liveSprintBtn');
+  function sprintOn(e){ e.preventDefault(); liveSprintHeld = true; sprintBtn.classList.add('held'); }
+  function sprintOff(){ liveSprintHeld = false; sprintBtn.classList.remove('held'); }
+  sprintBtn.addEventListener('touchstart', sprintOn, {passive:false});
+  sprintBtn.addEventListener('touchend', sprintOff);
+  sprintBtn.addEventListener('mousedown', sprintOn);
+  sprintBtn.addEventListener('mouseup', sprintOff);
+  sprintBtn.addEventListener('mouseleave', sprintOff);
 })();
 
 /* ============================= TROPHY CASE (ACHIEVEMENTS) ============================= */
