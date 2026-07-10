@@ -231,6 +231,57 @@ kbd {
   border-radius: var(--radius);
 }
 
+.recordings-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.tag-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag-filter {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  padding: 5px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.tag-filter:hover {
+  color: var(--text);
+}
+
+.tag-filter.is-active {
+  color: #fff;
+  background: var(--brand);
+  border-color: var(--brand);
+}
+
+.trash-toggle {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.trash-toggle:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
 .recordings-list {
   list-style: none;
   margin: 0;
@@ -243,8 +294,13 @@ kbd {
 .recording-item {
   background: var(--bg-card);
   border: 1px solid var(--border);
+  border-left: 4px solid var(--tag-color, transparent);
   border-radius: var(--radius);
   padding: 14px 16px;
+}
+
+.recording-item--trashed {
+  opacity: 0.85;
 }
 
 .recording-item__top {
@@ -274,6 +330,53 @@ kbd {
   min-width: 0;
 }
 
+.name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tag-picker {
+  display: flex;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.tag-dot {
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  padding: 0;
+  cursor: pointer;
+  background: var(--bg-elevated);
+  transition: transform 0.1s ease, border-color 0.1s ease;
+}
+
+.tag-dot:hover {
+  transform: scale(1.15);
+}
+
+.tag-dot[data-tag="work"] { background: #5b8cff; }
+.tag-dot[data-tag="personal"] { background: #35c76a; }
+.tag-dot[data-tag="idea"] { background: #f5a623; }
+
+.tag-dot--none {
+  background: var(--bg-elevated);
+  color: var(--text-dim);
+  font-size: 8px;
+  line-height: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tag-dot.is-selected {
+  border-color: #fff;
+  transform: scale(1.2);
+}
+
 .recording-name {
   background: transparent;
   border: 1px solid transparent;
@@ -283,7 +386,7 @@ kbd {
   padding: 2px 6px;
   border-radius: 6px;
   width: 100%;
-  max-width: 260px;
+  max-width: 190px;
 }
 
 .recording-name:hover,
@@ -302,10 +405,47 @@ kbd {
   padding: 0 6px;
 }
 
-.seek-bar {
+.waveform-canvas {
   width: 100%;
+  height: 56px;
+  display: block;
   margin-top: 10px;
-  accent-color: var(--brand);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  cursor: pointer;
+}
+
+.speed-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.speed-label {
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  margin-right: 2px;
+}
+
+.speed-btn {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  padding: 4px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.speed-btn:hover {
+  color: var(--text);
+}
+
+.speed-btn.is-active {
+  color: #fff;
+  background: var(--brand);
+  border-color: var(--brand);
 }
 
 .recording-item__actions {
@@ -387,10 +527,32 @@ kbd {
   outline: none;
 }
 
+/* ---------- Trash ---------- */
+.trash-section {
+  margin-top: 32px;
+}
+
+.trash-hint {
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  margin: -4px 0 12px;
+}
+
+.restore-btn:hover {
+  color: var(--success);
+  border-color: var(--success);
+}
+
+.delete-forever-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 /* ---------- Responsive ---------- */
 @media (max-width: 480px) {
   .app-header h1 { font-size: 1.5rem; }
   .recorder-card { padding: 18px; }
   .record-btn { width: 68px; height: 68px; }
-  .recording-name { max-width: 160px; }
+  .recording-name { max-width: 120px; }
+  .recordings-toolbar { flex-direction: column; align-items: stretch; }
 }

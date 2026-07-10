@@ -17,6 +17,20 @@
   const recordingsList = document.getElementById("recordingsList");
   const emptyState = document.getElementById("emptyState");
   const recordingTemplate = document.getElementById("recordingTemplate");
+  const tagFilterButtons = document.querySelectorAll(".tag-filter");
+  const trashToggle = document.getElementById("trashToggle");
+  const trashCountEl = document.getElementById("trashCount");
+  const trashSection = document.getElementById("trashSection");
+  const trashList = document.getElementById("trashList");
+  const trashEmptyState = document.getElementById("trashEmptyState");
+
+  const TAGS = {
+    work: { label: "Work", color: "#5b8cff" },
+    personal: { label: "Personal", color: "#35c76a" },
+    idea: { label: "Idea", color: "#f5a623" },
+  };
+  const TRASH_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+  let activeTagFilter = "all";
 
   // ---------- Recording state ----------
   let mediaStream = null;
@@ -254,6 +268,9 @@
       duration: finalDurationSeconds,
       createdAt: Date.now(),
       notes: "",
+      tag: null,
+      trashed: false,
+      trashedAt: null,
     };
 
     await RecordingsDB.addRecording(record);
@@ -364,6 +381,55 @@
     return name.replace(/[\\/:*?"<>|]/g, "_").trim() || "recording";
   }
 
+  // ---------- Waveform thumbnails ----------
+  let decodingAudioContext = null;
+  function getDecodingAudioContext() {
+    if (!decodingAudioContext) decodingAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    return decodingAudioContext;
+  }
+
+  function computePeaks(audioBuffer, numBars) {
+    const channel = audioBuffer.getChannelData(0);
+    const blockSize = Math.max(1, Math.floor(channel.length / numBars));
+    const peaks = [];
+    for (let i = 0; i < numBars; i++) {
+      const start = i * blockSize;
+      let max = 0;
+      for (let j = 0; j < blockSize && start + j < channel.length; j++) {
+        const v = Math.abs(channel[start + j]);
+        if (v > max) max = v;
+      }
+      peaks.push(Math.min(1, max));
+    }
+    return peaks;
+  }
+
+  // ---------- Tag filter / trash toolbar ----------
+  function applyTagFilter() {
+    recordingsList.querySelectorAll(".recording-item").forEach((node) => {
+      const matches = activeTagFilter === "all" || node.dataset.tag === activeTagFilter;
+      node.hidden = !matches;
+    });
+  }
+
+  tagFilterButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      activeTagFilter = btn.dataset.tag;
+      tagFilterButtons.forEach((b) => b.classList.toggle("is-active", b === btn));
+      applyTagFilter();
+    });
+  });
+
+  trashToggle.addEventListener("click", () => {
+    trashSection.hidden = !trashSection.hidden;
+  });
+
+  function updateTrashCount() {
+    const count = trashList.children.length;
+    trashCountEl.textContent = String(count);
+    trashEmptyState.hidden = count > 0;
+  }
+
   // ---------- Recordings list rendering ----------
   function updateEmptyState() {
     emptyState.hidden = recordingsList.children.length > 0;
@@ -379,8 +445,10 @@
     const nameInput = node.querySelector(".recording-name");
     const dateEl = node.querySelector(".recording-date");
     const durationEl = node.querySelector(".recording-duration");
-    const seekBar = node.querySelector(".seek-bar");
+    const waveformCanvas = node.querySelector(".waveform-canvas");
+    const wfCtx = waveformCanvas.getContext("2d");
     const audioEl = node.querySelector(".audio-el");
+    const speedBtns = node.querySelectorAll(".speed-btn");
     const downloadWebmBtn = node.querySelector(".download-webm");
     const downloadWavBtn = node.querySelector(".download-wav");
     const deleteBtn = node.querySelector(".delete-btn");
@@ -388,12 +456,93 @@
     const notesSection = node.querySelector(".notes-section");
     const notesList = node.querySelector(".notes-list");
     const notesInput = node.querySelector(".notes-input");
+    const tagDots = node.querySelectorAll(".tag-dot");
 
     node.dataset.id = record.id;
     nameInput.value = record.name;
     dateEl.textContent = new Date(record.createdAt).toLocaleString();
     durationEl.textContent = formatTime(record.duration || 0);
     audioEl.src = objectUrl;
+
+    // -- Tag --
+    function updateTagUI() {
+      const color = record.tag && TAGS[record.tag] ? TAGS[record.tag].color : null;
+      node.style.setProperty("--tag-color", color || "transparent");
+      node.dataset.tag = record.tag || "none";
+      tagDots.forEach((dot) => {
+        const isSelected = dot.dataset.tag === "none" ? !record.tag : dot.dataset.tag === record.tag;
+        dot.classList.toggle("is-selected", isSelected);
+      });
+    }
+
+    tagDots.forEach((dot) => {
+      dot.addEventListener("click", async () => {
+        const newTag = dot.dataset.tag === "none" ? null : dot.dataset.tag;
+        record.tag = newTag;
+        await RecordingsDB.updateRecording(record.id, { tag: newTag });
+        updateTagUI();
+        applyTagFilter();
+      });
+    });
+
+    updateTagUI();
+
+    // -- Waveform thumbnail --
+    let peaks = null;
+
+    function drawWaveform(progressRatio) {
+      if (!peaks) return;
+      const dpr = window.devicePixelRatio || 1;
+      const w = waveformCanvas.clientWidth;
+      const h = waveformCanvas.clientHeight;
+      if (w === 0 || h === 0) return;
+      waveformCanvas.width = w * dpr;
+      waveformCanvas.height = h * dpr;
+      wfCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      wfCtx.clearRect(0, 0, w, h);
+      const barWidth = w / peaks.length;
+      const progressX = progressRatio * w;
+      peaks.forEach((peak, i) => {
+        const barHeight = Math.max(2, peak * h);
+        const x = i * barWidth;
+        const y = (h - barHeight) / 2;
+        wfCtx.fillStyle = x < progressX ? "#5b8cff" : "#3a3f4a";
+        wfCtx.fillRect(x, y, Math.max(1, barWidth - 1), barHeight);
+      });
+    }
+
+    async function loadWaveform() {
+      try {
+        const arrayBuffer = await record.blob.arrayBuffer();
+        const audioBuffer = await getDecodingAudioContext().decodeAudioData(arrayBuffer);
+        peaks = computePeaks(audioBuffer, 96);
+      } catch (err) {
+        peaks = new Array(96).fill(0.08);
+      }
+      drawWaveform(0);
+    }
+    loadWaveform();
+
+    const waveformResizeObserver = new ResizeObserver(() => {
+      drawWaveform(audioEl.duration ? audioEl.currentTime / audioEl.duration : 0);
+    });
+    waveformResizeObserver.observe(waveformCanvas);
+
+    waveformCanvas.addEventListener("click", (e) => {
+      if (!audioEl.duration) return;
+      const rect = waveformCanvas.getBoundingClientRect();
+      const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+      audioEl.currentTime = ratio * audioEl.duration;
+      drawWaveform(ratio);
+    });
+
+    // -- Playback speed --
+    speedBtns.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        audioEl.playbackRate = parseFloat(btn.dataset.speed);
+        speedBtns.forEach((b) => b.classList.toggle("is-active", b === btn));
+      });
+    });
 
     // -- Playback --
     playBtn.addEventListener("click", () => {
@@ -421,24 +570,18 @@
     audioEl.addEventListener("ended", () => {
       iconPlay.hidden = false;
       iconPause.hidden = true;
-      seekBar.value = 0;
+      drawWaveform(0);
     });
 
     audioEl.addEventListener("timeupdate", () => {
       if (audioEl.duration) {
-        seekBar.value = (audioEl.currentTime / audioEl.duration) * 100;
+        drawWaveform(audioEl.currentTime / audioEl.duration);
       }
     });
 
     audioEl.addEventListener("loadedmetadata", () => {
       if (isFinite(audioEl.duration) && audioEl.duration > 0) {
         durationEl.textContent = formatTime(audioEl.duration);
-      }
-    });
-
-    seekBar.addEventListener("input", () => {
-      if (audioEl.duration) {
-        audioEl.currentTime = (seekBar.value / 100) * audioEl.duration;
       }
     });
 
@@ -528,17 +671,82 @@
 
     markHasNotes();
 
-    // -- Delete --
+    // -- Delete (moves to trash, recoverable for a while) --
     deleteBtn.addEventListener("click", async () => {
-      if (!confirm(`Delete "${nameInput.value}"? This can't be undone.`)) return;
-      await RecordingsDB.deleteRecording(record.id);
+      record.trashed = true;
+      record.trashedAt = Date.now();
+      await RecordingsDB.updateRecording(record.id, { trashed: true, trashedAt: record.trashedAt });
+      waveformResizeObserver.disconnect();
       URL.revokeObjectURL(objectUrl);
       node.remove();
       updateEmptyState();
+      renderTrashItem(record, { prepend: true });
+      updateTrashCount();
     });
 
     if (prepend) recordingsList.prepend(node);
     else recordingsList.appendChild(node);
+    applyTagFilter();
+  }
+
+  // ---------- Trash ----------
+  function renderTrashItem(record, { prepend = false } = {}) {
+    const node = document.createElement("li");
+    node.className = "recording-item recording-item--trashed";
+
+    const top = document.createElement("div");
+    top.className = "recording-item__top";
+
+    const meta = document.createElement("div");
+    meta.className = "recording-item__meta";
+
+    const nameEl = document.createElement("div");
+    nameEl.className = "recording-name";
+    nameEl.style.padding = "2px 6px";
+    nameEl.textContent = record.name;
+
+    const sub = document.createElement("div");
+    sub.className = "recording-sub";
+    sub.textContent = `${new Date(record.createdAt).toLocaleString()} • ${formatTime(record.duration || 0)}`;
+
+    meta.appendChild(nameEl);
+    meta.appendChild(sub);
+    top.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "recording-item__actions";
+
+    const restoreBtn = document.createElement("button");
+    restoreBtn.className = "icon-action restore-btn";
+    restoreBtn.textContent = "↺ Restore";
+    restoreBtn.addEventListener("click", async () => {
+      record.trashed = false;
+      record.trashedAt = null;
+      await RecordingsDB.updateRecording(record.id, { trashed: false, trashedAt: null });
+      node.remove();
+      updateTrashCount();
+      renderRecordingItem(record, { prepend: true });
+      updateEmptyState();
+    });
+
+    const deleteForeverBtn = document.createElement("button");
+    deleteForeverBtn.className = "icon-action delete-forever-btn";
+    deleteForeverBtn.textContent = "🗑 Delete Forever";
+    deleteForeverBtn.addEventListener("click", async () => {
+      if (!confirm(`Permanently delete "${record.name}"? This can't be undone.`)) return;
+      await RecordingsDB.deleteRecording(record.id);
+      node.remove();
+      updateTrashCount();
+    });
+
+    actions.appendChild(restoreBtn);
+    actions.appendChild(deleteForeverBtn);
+
+    node.appendChild(top);
+    node.appendChild(actions);
+
+    if (prepend) trashList.prepend(node);
+    else trashList.appendChild(node);
   }
 
   // ---------- Init ----------
@@ -557,11 +765,21 @@
 
     try {
       const existing = await RecordingsDB.getAllRecordings();
-      existing.forEach((record) => renderRecordingItem(record));
+      const now = Date.now();
+      for (const record of existing) {
+        const expired = record.trashed && record.trashedAt && now - record.trashedAt > TRASH_RETENTION_MS;
+        if (expired) {
+          await RecordingsDB.deleteRecording(record.id);
+          continue;
+        }
+        if (record.trashed) renderTrashItem(record);
+        else renderRecordingItem(record);
+      }
     } catch (err) {
       showError("Couldn't load saved recordings from local storage.");
     }
     updateEmptyState();
+    updateTrashCount();
   }
 
   init();

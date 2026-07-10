@@ -9,8 +9,12 @@ mobile app (Capacitor, for Android/iOS).
 - Start / pause / resume / stop recording (MediaRecorder API)
 - Live waveform meter while recording (Web Audio `AnalyserNode`)
 - mm:ss timer, spacebar shortcut to start/stop
-- Recordings list: play/pause with seek bar, rename, download as
-  `.webm`/`.wav`, delete
+- Recordings list: play/pause, static waveform thumbnail (click to seek),
+  0.5x/1x/1.5x/2x playback speed, rename, download as `.webm`/`.wav`
+- Per-recording notes as a bullet list
+- Color tags (Work/Personal/Idea) with a filter bar to show only one tag
+- Delete moves a recording to Trash instead of wiping it; restore it or
+  let it auto-purge after 7 days
 - Recordings persist across restarts via IndexedDB
 - Friendly error message if microphone access is denied or unavailable
 
