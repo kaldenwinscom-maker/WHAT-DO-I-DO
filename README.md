@@ -22,6 +22,10 @@ mobile app (Capacitor, for Android/iOS).
 - Ask Claude or ChatGPT questions about a recording's notes/transcript
 - Warm, Claude-inspired light/dark theme (🌙/☀️ toggle in the header,
   saved locally; defaults to your OS preference)
+- Export/import a full backup (recordings, notes, tags, chat history)
+  as a `.zip` — everything is stored locally in the browser, so this is
+  the only way to move data between devices or survive clearing your
+  browser data
 
 ### Transcription
 
@@ -58,11 +62,27 @@ recordings from this week." Same Claude/ChatGPT toggle and API keys as
 the per-recording chat; history is saved to `localStorage` (not tied
 to a specific recording, so it survives even if you delete one).
 
+### Backup (export / import)
+
+Everything in this app — recordings, notes, tags, chat history — lives
+only in that browser's IndexedDB. There's no server, so there's no
+automatic backup: clearing browser data, switching browsers, or moving
+to a new device loses everything unless you export first.
+
+Click **⭳ Export All Data** to download a `.zip` containing every
+recording's audio file plus a `manifest.json` with names, notes, tags,
+and chat history (a real, standard zip — openable with any zip tool,
+not just this app). Click **⭱ Import Backup** and pick that file to
+restore it — on any device or browser, including the desktop/mobile
+builds, since they each have separate storage. Importing is additive
+and skips recordings that already exist (by ID), so re-importing the
+same backup twice won't create duplicates.
+
 ## Project layout
 
 ```
 web/                  Shared app: index.html, style.css, app.js, db.js,
-                       claude-client.bundle.js (built, see below)
+                       zip.js (export/import), claude-client.bundle.js (built, see below)
 web-src/               Claude client source (bundled, not loaded directly)
 main.js, preload.js   Electron entry point (desktop app)
 capacitor.config.json Capacitor config (mobile app)

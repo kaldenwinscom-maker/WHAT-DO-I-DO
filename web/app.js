@@ -34,6 +34,9 @@
   const globalChatMessages = document.getElementById("globalChatMessages");
   const globalChatInput = document.getElementById("globalChatInput");
   const globalChatSendBtn = document.getElementById("globalChatSendBtn");
+  const exportBtn = document.getElementById("exportBtn");
+  const importBtn = document.getElementById("importBtn");
+  const importFileInput = document.getElementById("importFileInput");
 
   const TAGS = {
     work: { label: "Work", color: "#5b8cff" },
@@ -1207,6 +1210,133 @@
   globalChatSendBtn.addEventListener("click", sendGlobalChatMessage);
   globalChatInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") sendGlobalChatMessage();
+  });
+
+  // ---------- Backup: export / import ----------
+  exportBtn.addEventListener("click", async () => {
+    const originalLabel = exportBtn.textContent;
+    exportBtn.disabled = true;
+    exportBtn.textContent = "⏳ Exporting…";
+
+    try {
+      const records = await RecordingsDB.getAllRecordings();
+      const manifest = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        globalChat,
+        globalChatProvider,
+        recordings: [],
+      };
+      const zipEntries = [];
+
+      for (const record of records) {
+        const ext = record.mimeType && record.mimeType.includes("ogg") ? "ogg" : "webm";
+        const audioFile = `audio/${record.id}.${ext}`;
+        zipEntries.push({ name: audioFile, data: new Uint8Array(await record.blob.arrayBuffer()) });
+        manifest.recordings.push({
+          id: record.id,
+          name: record.name,
+          mimeType: record.mimeType,
+          duration: record.duration,
+          createdAt: record.createdAt,
+          notes: record.notes || "",
+          tag: record.tag || null,
+          trashed: Boolean(record.trashed),
+          trashedAt: record.trashedAt || null,
+          chat: record.chat || [],
+          chatProvider: record.chatProvider || "claude",
+          audioFile,
+        });
+      }
+
+      zipEntries.unshift({ name: "manifest.json", data: new TextEncoder().encode(JSON.stringify(manifest, null, 2)) });
+
+      const zipBlob = MiniZip.createZip(zipEntries);
+      const dateStr = new Date().toISOString().slice(0, 10);
+      triggerDownload(zipBlob, `voice-recorder-backup-${dateStr}.zip`);
+    } catch (err) {
+      showError(`Export failed: ${err.message || "unknown error"}.`);
+    } finally {
+      exportBtn.disabled = false;
+      exportBtn.textContent = originalLabel;
+    }
+  });
+
+  importBtn.addEventListener("click", () => importFileInput.click());
+
+  importFileInput.addEventListener("change", async () => {
+    const file = importFileInput.files[0];
+    importFileInput.value = "";
+    if (!file) return;
+
+    const originalLabel = importBtn.textContent;
+    importBtn.disabled = true;
+    importBtn.textContent = "⏳ Importing…";
+
+    try {
+      const entries = await MiniZip.readZip(await file.arrayBuffer());
+      const manifestBytes = entries.get("manifest.json");
+      if (!manifestBytes) throw new Error("This doesn't look like a Voice Recorder backup (no manifest.json found)");
+      const manifest = JSON.parse(new TextDecoder().decode(manifestBytes));
+
+      const existingIds = new Set((await RecordingsDB.getAllRecordings()).map((r) => r.id));
+      let imported = 0;
+      let skipped = 0;
+
+      for (const item of manifest.recordings || []) {
+        if (existingIds.has(item.id)) {
+          skipped += 1;
+          continue;
+        }
+        const audioBytes = entries.get(item.audioFile);
+        if (!audioBytes) {
+          skipped += 1;
+          continue;
+        }
+        const record = {
+          id: item.id,
+          name: item.name,
+          blob: new Blob([audioBytes], { type: item.mimeType || "audio/webm" }),
+          mimeType: item.mimeType,
+          duration: item.duration,
+          createdAt: item.createdAt,
+          notes: item.notes || "",
+          tag: item.tag || null,
+          trashed: Boolean(item.trashed),
+          trashedAt: item.trashedAt || null,
+          chat: item.chat || [],
+          chatProvider: item.chatProvider || "claude",
+        };
+        await RecordingsDB.addRecording(record);
+        if (record.trashed) renderTrashItem(record, { prepend: true });
+        else renderRecordingItem(record, { prepend: true });
+        imported += 1;
+      }
+
+      updateEmptyState();
+      updateTrashCount();
+
+      let summary = `Imported ${imported} recording${imported === 1 ? "" : "s"}.`;
+      if (skipped > 0) summary += ` Skipped ${skipped} (already present or missing audio).`;
+
+      if (Array.isArray(manifest.globalChat) && manifest.globalChat.length > 0) {
+        const replace = confirm(`${summary}\n\nThis backup also has ${manifest.globalChat.length} global chat message(s). Replace your current global chat with the backup's?`);
+        if (replace) {
+          globalChat = manifest.globalChat;
+          globalChatProvider = manifest.globalChatProvider || globalChatProvider;
+          saveGlobalChatState();
+          updateGlobalChatProviderUI();
+          renderGlobalChatMessages();
+        }
+      } else {
+        alert(summary);
+      }
+    } catch (err) {
+      showError(`Import failed: ${err.message || "unknown error"}.`);
+    } finally {
+      importBtn.disabled = false;
+      importBtn.textContent = originalLabel;
+    }
   });
 
   // ---------- Init ----------
