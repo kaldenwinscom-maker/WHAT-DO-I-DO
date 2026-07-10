@@ -6,11 +6,19 @@
   <title>Voice Recorder</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎙️</text></svg>" />
   <link rel="stylesheet" href="style.css" />
+  <script>
+    // Apply any saved theme before first paint to avoid a flash of the wrong theme.
+    (function () {
+      var saved = localStorage.getItem("voiceRecorderTheme");
+      if (saved) document.documentElement.dataset.theme = saved;
+    })();
+  </script>
 </head>
 <body>
   <div class="app">
     <header class="app-header">
-      <h1>🎙️ Voice Recorder</h1>
+      <button id="themeToggle" class="theme-toggle" title="Toggle light/dark theme">🌙</button>
+      <h1>Voice Recorder</h1>
       <p class="subtitle">Record, save, and manage your voice notes — right in the browser.</p>
       <div class="key-buttons">
         <button id="openaiKeyBtn" class="api-key-btn" title="Set the OpenAI API key used for transcription and ChatGPT">🔑 Set OpenAI API key</button>

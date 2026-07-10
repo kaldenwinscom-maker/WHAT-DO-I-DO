@@ -27,17 +27,43 @@
   const noMatchesState = document.getElementById("noMatchesState");
   const openaiKeyBtn = document.getElementById("openaiKeyBtn");
   const anthropicKeyBtn = document.getElementById("anthropicKeyBtn");
+  const themeToggle = document.getElementById("themeToggle");
 
   const TAGS = {
     work: { label: "Work", color: "#5b8cff" },
-    personal: { label: "Personal", color: "#35c76a" },
-    idea: { label: "Idea", color: "#f5a623" },
+    personal: { label: "Personal", color: "#4f8a5f" },
+    idea: { label: "Idea", color: "#a869c9" },
   };
   const TRASH_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
   const OPENAI_KEY_STORAGE = "voiceRecorderOpenAIKey";
   const ANTHROPIC_KEY_STORAGE = "voiceRecorderAnthropicKey";
+  const THEME_STORAGE = "voiceRecorderTheme";
   let activeTagFilter = "all";
   let searchQuery = "";
+
+  // ---------- Theme ----------
+  function cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  function isDarkTheme() {
+    const explicit = document.documentElement.dataset.theme;
+    if (explicit) return explicit === "dark";
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+
+  function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem(THEME_STORAGE, theme);
+    themeToggle.textContent = theme === "dark" ? "☀️" : "🌙";
+  }
+
+  themeToggle.addEventListener("click", () => {
+    applyTheme(isDarkTheme() ? "light" : "dark");
+    if (recordState === "idle") drawIdleLine();
+  });
+
+  themeToggle.textContent = isDarkTheme() ? "☀️" : "🌙";
 
   // ---------- Recording state ----------
   let mediaStream = null;
@@ -134,7 +160,7 @@
     const w = visualizer.clientWidth;
     const h = visualizer.clientHeight;
     visCtx.clearRect(0, 0, w, h);
-    visCtx.strokeStyle = "#2a2f3a";
+    visCtx.strokeStyle = cssVar("--border-strong");
     visCtx.lineWidth = 2;
     visCtx.beginPath();
     visCtx.moveTo(0, h / 2);
@@ -156,7 +182,7 @@
 
       visCtx.clearRect(0, 0, w, h);
       visCtx.lineWidth = 2;
-      visCtx.strokeStyle = recordState === "paused" ? "#f5a623" : "#ff4d4f";
+      visCtx.strokeStyle = recordState === "paused" ? cssVar("--accent") : cssVar("--record");
       visCtx.beginPath();
 
       const sliceWidth = w / bufferLength;
@@ -612,11 +638,13 @@
       wfCtx.clearRect(0, 0, w, h);
       const barWidth = w / peaks.length;
       const progressX = progressRatio * w;
+      const playedColor = cssVar("--accent");
+      const unplayedColor = cssVar("--border-strong");
       peaks.forEach((peak, i) => {
         const barHeight = Math.max(2, peak * h);
         const x = i * barWidth;
         const y = (h - barHeight) / 2;
-        wfCtx.fillStyle = x < progressX ? "#5b8cff" : "#3a3f4a";
+        wfCtx.fillStyle = x < progressX ? playedColor : unplayedColor;
         wfCtx.fillRect(x, y, Math.max(1, barWidth - 1), barHeight);
       });
     }

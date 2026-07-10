@@ -20,6 +20,8 @@ mobile app (Capacitor, for Android/iOS).
 - Recordings persist across restarts via IndexedDB
 - Friendly error message if microphone access is denied or unavailable
 - Ask Claude or ChatGPT questions about a recording's notes/transcript
+- Warm, Claude-inspired light/dark theme (🌙/☀️ toggle in the header,
+  saved locally; defaults to your OS preference)
 
 ### Transcription
 
