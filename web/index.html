@@ -64,9 +64,14 @@
       <input class="seek-bar" type="range" min="0" max="100" value="0" step="0.1" />
       <audio class="audio-el" preload="metadata"></audio>
       <div class="recording-item__actions">
+        <button class="icon-action notes-toggle" title="Add/view notes">📝 Notes</button>
         <button class="icon-action download-webm" title="Download as .webm">⭳ WEBM</button>
         <button class="icon-action download-wav" title="Download as .wav">⭳ WAV</button>
         <button class="icon-action delete-btn" title="Delete recording">🗑 Delete</button>
+      </div>
+      <div class="notes-section" hidden>
+        <ul class="notes-list" hidden></ul>
+        <textarea class="notes-input" placeholder="Type notes, one per line — each line becomes a bullet" hidden></textarea>
       </div>
     </li>
   </template>

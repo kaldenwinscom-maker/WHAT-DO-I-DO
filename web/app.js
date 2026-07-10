@@ -253,6 +253,7 @@
       mimeType: blobType,
       duration: finalDurationSeconds,
       createdAt: Date.now(),
+      notes: "",
     };
 
     await RecordingsDB.addRecording(record);
@@ -383,6 +384,10 @@
     const downloadWebmBtn = node.querySelector(".download-webm");
     const downloadWavBtn = node.querySelector(".download-wav");
     const deleteBtn = node.querySelector(".delete-btn");
+    const notesToggle = node.querySelector(".notes-toggle");
+    const notesSection = node.querySelector(".notes-section");
+    const notesList = node.querySelector(".notes-list");
+    const notesInput = node.querySelector(".notes-input");
 
     node.dataset.id = record.id;
     nameInput.value = record.name;
@@ -464,6 +469,64 @@
         downloadWavBtn.textContent = "⭳ WAV";
       }
     });
+
+    // -- Notes (bullet list per recording) --
+    function notesLines() {
+      return (record.notes || "").split("\n").map((line) => line.trim()).filter(Boolean);
+    }
+
+    function markHasNotes() {
+      notesToggle.classList.toggle("is-active", notesLines().length > 0);
+    }
+
+    function showNotesView() {
+      const lines = notesLines();
+      notesList.innerHTML = "";
+      if (lines.length === 0) {
+        const li = document.createElement("li");
+        li.className = "notes-empty";
+        li.textContent = "No notes yet — click to add some.";
+        notesList.appendChild(li);
+      } else {
+        lines.forEach((line) => {
+          const li = document.createElement("li");
+          li.textContent = line;
+          notesList.appendChild(li);
+        });
+      }
+      notesList.hidden = false;
+      notesInput.hidden = true;
+    }
+
+    function showNotesEditor() {
+      notesInput.value = record.notes || "";
+      notesList.hidden = true;
+      notesInput.hidden = false;
+      notesInput.focus();
+    }
+
+    notesToggle.addEventListener("click", () => {
+      const opening = notesSection.hidden;
+      notesSection.hidden = !opening;
+      if (opening) {
+        if (notesLines().length > 0) showNotesView();
+        else showNotesEditor();
+      }
+    });
+
+    notesList.addEventListener("click", showNotesEditor);
+
+    notesInput.addEventListener("blur", async () => {
+      const newNotes = notesInput.value;
+      if (newNotes !== record.notes) {
+        record.notes = newNotes;
+        await RecordingsDB.updateRecording(record.id, { notes: newNotes });
+        markHasNotes();
+      }
+      showNotesView();
+    });
+
+    markHasNotes();
 
     // -- Delete --
     deleteBtn.addEventListener("click", async () => {
