@@ -46,9 +46,22 @@ This opens a native window loading `web/index.html`. `main.js` grants the
 mic permission Electron would otherwise deny by default (there's no
 browser chrome to show a permission prompt).
 
-To package installers for distribution, add
-[`electron-builder`](https://www.electron.build/) and a `build` script —
-not included here to keep the base install light.
+### Install it as a real Mac app
+
+To get an actual `Voice Recorder.app` you can drag into `/Applications`
+and launch from Spotlight/Dock (instead of running `npm start` from a
+terminal every time), build it with `electron-builder` on a Mac:
+
+```
+npm install
+npm run dist:mac
+```
+
+This produces `dist/Voice Recorder-1.0.0.dmg` (and a `.zip`). Open the
+`.dmg` and drag `Voice Recorder.app` into `Applications`. The build is
+unsigned, so on first launch macOS Gatekeeper will block it — right-click
+the app → **Open** → **Open** to approve it once (or System Settings →
+Privacy & Security → "Open Anyway" if it was blocked outright).
 
 ## Run it as a mobile app (Capacitor)
 
