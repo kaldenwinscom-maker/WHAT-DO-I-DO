@@ -28,6 +28,12 @@
   const openaiKeyBtn = document.getElementById("openaiKeyBtn");
   const anthropicKeyBtn = document.getElementById("anthropicKeyBtn");
   const themeToggle = document.getElementById("themeToggle");
+  const globalChatToggle = document.getElementById("globalChatToggle");
+  const globalChatSection = document.getElementById("globalChatSection");
+  const globalChatProviderBtns = document.querySelectorAll("#globalChatSection .chat-provider-btn");
+  const globalChatMessages = document.getElementById("globalChatMessages");
+  const globalChatInput = document.getElementById("globalChatInput");
+  const globalChatSendBtn = document.getElementById("globalChatSendBtn");
 
   const TAGS = {
     work: { label: "Work", color: "#5b8cff" },
@@ -38,8 +44,12 @@
   const OPENAI_KEY_STORAGE = "voiceRecorderOpenAIKey";
   const ANTHROPIC_KEY_STORAGE = "voiceRecorderAnthropicKey";
   const THEME_STORAGE = "voiceRecorderTheme";
+  const GLOBAL_CHAT_STORAGE = "voiceRecorderGlobalChat";
+  const GLOBAL_CHAT_PROVIDER_STORAGE = "voiceRecorderGlobalChatProvider";
   let activeTagFilter = "all";
   let searchQuery = "";
+  let globalChat = [];
+  let globalChatProvider = "claude";
 
   // ---------- Theme ----------
   function cssVar(name) {
@@ -1066,11 +1076,146 @@
     else trashList.appendChild(node);
   }
 
+  // ---------- Global chat (all recordings + general assistant) ----------
+  function loadGlobalChatState() {
+    try {
+      const stored = localStorage.getItem(GLOBAL_CHAT_STORAGE);
+      globalChat = stored ? JSON.parse(stored) : [];
+    } catch (err) {
+      globalChat = [];
+    }
+    globalChatProvider = localStorage.getItem(GLOBAL_CHAT_PROVIDER_STORAGE) || "claude";
+  }
+
+  function saveGlobalChatState() {
+    localStorage.setItem(GLOBAL_CHAT_STORAGE, JSON.stringify(globalChat));
+    localStorage.setItem(GLOBAL_CHAT_PROVIDER_STORAGE, globalChatProvider);
+  }
+
+  function updateGlobalChatProviderUI() {
+    globalChatProviderBtns.forEach((btn) => {
+      btn.classList.toggle("is-active", btn.dataset.provider === globalChatProvider);
+    });
+  }
+
+  function renderGlobalChatMessages() {
+    globalChatMessages.innerHTML = "";
+    globalChat.forEach((msg) => {
+      const li = document.createElement("li");
+      const kind = msg.isError ? "error" : msg.role === "user" ? "user" : "assistant";
+      li.className = `chat-message chat-message--${kind}`;
+      li.textContent = msg.content;
+      globalChatMessages.appendChild(li);
+    });
+    globalChatMessages.scrollTop = globalChatMessages.scrollHeight;
+  }
+
+  async function buildGlobalChatSystemPrompt() {
+    let recordings = [];
+    try {
+      recordings = (await RecordingsDB.getAllRecordings()).filter((r) => !r.trashed);
+    } catch (err) {
+      recordings = [];
+    }
+
+    const base = "You are a helpful assistant inside a voice recording app. Answer the user's question directly — it may or may not be about their recordings.";
+
+    if (recordings.length === 0) {
+      return `${base}\n\nThe user has no recordings yet.`;
+    }
+
+    const summary = recordings
+      .map((r) => `- "${r.name}"${r.notes ? `: ${r.notes.replace(/\n/g, "; ")}` : " (no notes)"}`)
+      .join("\n");
+
+    return `${base}\n\nHere are the user's recordings (name: notes):\n${summary}`;
+  }
+
+  globalChatToggle.addEventListener("click", () => {
+    const opening = globalChatSection.hidden;
+    globalChatSection.hidden = !opening;
+    globalChatToggle.classList.toggle("is-active", opening);
+    if (opening) {
+      renderGlobalChatMessages();
+      globalChatInput.focus();
+    }
+  });
+
+  globalChatProviderBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      globalChatProvider = btn.dataset.provider;
+      saveGlobalChatState();
+      updateGlobalChatProviderUI();
+    });
+  });
+
+  async function sendGlobalChatMessage() {
+    const question = globalChatInput.value.trim();
+    if (!question) return;
+
+    let key;
+    if (globalChatProvider === "claude") {
+      key = getAnthropicKey();
+      if (!key) key = promptForAnthropicKey();
+    } else {
+      key = getOpenAiKey();
+      if (!key) key = promptForOpenAiKey();
+    }
+    if (!key) return;
+
+    globalChatInput.value = "";
+    globalChat.push({ role: "user", content: question });
+    renderGlobalChatMessages();
+    saveGlobalChatState();
+
+    const pendingLi = document.createElement("li");
+    pendingLi.className = "chat-message chat-message--assistant chat-message--pending";
+    pendingLi.textContent = "…";
+    globalChatMessages.appendChild(pendingLi);
+    globalChatMessages.scrollTop = globalChatMessages.scrollHeight;
+
+    globalChatSendBtn.disabled = true;
+    globalChatInput.disabled = true;
+
+    try {
+      const systemPrompt = await buildGlobalChatSystemPrompt();
+      const history = globalChat.map((msg) => ({ role: msg.role, content: msg.content }));
+      const answer =
+        globalChatProvider === "claude"
+          ? await window.ClaudeClient.sendClaudeMessage({ apiKey: key, systemPrompt, messages: history })
+          : await sendChatGptMessage({ apiKey: key, systemPrompt, messages: history });
+      globalChat.push({ role: "assistant", content: answer || "(no response)" });
+    } catch (err) {
+      let message;
+      if (globalChatProvider === "claude") {
+        message = window.ClaudeClient.classifyClaudeError(err);
+        if (window.ClaudeClient.isClaudeAuthError(err)) setAnthropicKey("");
+      } else {
+        message = err.message || "Something went wrong talking to ChatGPT.";
+        if (err.isAuthError) setOpenAiKey("");
+      }
+      globalChat.push({ role: "assistant", content: message, isError: true });
+    } finally {
+      pendingLi.remove();
+      globalChatSendBtn.disabled = false;
+      globalChatInput.disabled = false;
+      renderGlobalChatMessages();
+      saveGlobalChatState();
+    }
+  }
+
+  globalChatSendBtn.addEventListener("click", sendGlobalChatMessage);
+  globalChatInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") sendGlobalChatMessage();
+  });
+
   // ---------- Init ----------
   async function init() {
     drawIdleLine();
     setOpenAiKey(getOpenAiKey());
     setAnthropicKey(getAnthropicKey());
+    loadGlobalChatState();
+    updateGlobalChatProviderUI();
     window.addEventListener("resize", () => {
       if (recordState === "idle") drawIdleLine();
     });

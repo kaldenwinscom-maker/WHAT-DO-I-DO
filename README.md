@@ -48,6 +48,16 @@ ChatGPT reuses the OpenAI key from Transcription above. Both keys live
 only in `localStorage` and are sent only to their own provider's API —
 chat history is saved per recording in IndexedDB.
 
+### Global chat
+
+Click **💬 Chat** in the header for a chat panel that isn't tied to any
+one recording — it works as a general assistant, and automatically
+includes every non-trashed recording's name and notes as context, so
+you can ask things like "what do I need to buy?" or "summarize my
+recordings from this week." Same Claude/ChatGPT toggle and API keys as
+the per-recording chat; history is saved to `localStorage` (not tied
+to a specific recording, so it survives even if you delete one).
+
 ## Project layout
 
 ```

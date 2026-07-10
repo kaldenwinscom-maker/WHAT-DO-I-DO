@@ -24,10 +24,27 @@
         <button id="openaiKeyBtn" class="api-key-btn" title="Set the OpenAI API key used for transcription and ChatGPT">🔑 Set OpenAI API key</button>
         <button id="anthropicKeyBtn" class="api-key-btn" title="Set the Anthropic API key used for Claude">🔑 Set Anthropic API key</button>
       </div>
+      <button id="globalChatToggle" class="global-chat-toggle" title="Chat with Claude or ChatGPT — sees all your recordings">💬 Chat</button>
     </header>
 
     <!-- Permission / error banner -->
     <div id="errorBanner" class="banner banner--error" hidden></div>
+
+    <section id="globalChatSection" class="chat-section global-chat-section" hidden>
+      <div class="global-chat-header">
+        <h2>Chat</h2>
+        <p class="global-chat-hint">Ask anything — it can also see your recordings' names and notes.</p>
+      </div>
+      <div class="chat-provider-toggle">
+        <button class="chat-provider-btn is-active" id="globalChatProviderClaude" data-provider="claude">Claude</button>
+        <button class="chat-provider-btn" id="globalChatProviderChatgpt" data-provider="chatgpt">ChatGPT</button>
+      </div>
+      <ul id="globalChatMessages" class="chat-messages"></ul>
+      <div class="chat-input-row">
+        <input id="globalChatInput" class="chat-input" type="text" placeholder="Ask about your recordings, or anything else…" />
+        <button id="globalChatSendBtn" class="chat-send-btn" aria-label="Send">➤</button>
+      </div>
+    </section>
 
     <main class="recorder-card">
       <div class="status-row">
