@@ -1,0 +1,345 @@
+/* ---------- Base / theme ---------- */
+:root {
+  --bg: #0f1115;
+  --bg-elevated: #171a21;
+  --bg-card: #1c2028;
+  --border: #2a2f3a;
+  --text: #e8e9ed;
+  --text-dim: #8b909c;
+  --accent: #ff4d4f;
+  --accent-dim: #7a2a2b;
+  --accent-glow: rgba(255, 77, 79, 0.35);
+  --brand: #5b8cff;
+  --success: #35c76a;
+  --radius: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at top, #171b24 0%, #0b0d11 65%);
+  color: var(--text);
+  display: flex;
+  justify-content: center;
+  padding: 24px 16px 64px;
+}
+
+.app {
+  width: 100%;
+  max-width: 640px;
+}
+
+.app-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.app-header h1 {
+  margin: 0 0 4px;
+  font-size: 1.9rem;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.95rem;
+}
+
+/* ---------- Banner ---------- */
+.banner {
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.banner--error {
+  background: rgba(255, 77, 79, 0.12);
+  border: 1px solid rgba(255, 77, 79, 0.4);
+  color: #ffb3b4;
+}
+
+/* ---------- Recorder card ---------- */
+.recorder-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+
+.status-dot--recording {
+  background: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-glow);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.status-dot--paused {
+  background: #f5a623;
+  box-shadow: 0 0 0 4px rgba(245, 166, 35, 0.3);
+}
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 4px var(--accent-glow); }
+  50% { box-shadow: 0 0 0 8px transparent; }
+}
+
+.status-text {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  min-width: 70px;
+}
+
+.timer {
+  margin-left: auto;
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.visualizer {
+  width: 100%;
+  height: 80px;
+  background: var(--bg-elevated);
+  border-radius: 10px;
+  display: block;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.record-btn {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 0 0 0 var(--accent-glow);
+}
+
+.record-btn:hover { transform: scale(1.05); }
+.record-btn:active { transform: scale(0.96); }
+
+.record-btn__icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #fff;
+  transition: border-radius 0.15s ease, width 0.15s ease, height 0.15s ease;
+}
+
+.record-btn.is-recording {
+  box-shadow: 0 0 0 8px var(--accent-glow);
+}
+
+.record-btn.is-recording .record-btn__icon {
+  border-radius: 6px;
+  width: 24px;
+  height: 24px;
+}
+
+.record-btn.is-paused {
+  background: #f5a623;
+}
+
+.control-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.control-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.control-btn:not(:disabled):hover {
+  background: var(--border);
+}
+
+.hint {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+}
+
+kbd {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 0.75rem;
+}
+
+/* ---------- Recordings list ---------- */
+.recordings-section {
+  margin-top: 32px;
+}
+
+.recordings-section h2 {
+  font-size: 1.1rem;
+  margin-bottom: 12px;
+  color: var(--text-dim);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.empty-state {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  padding: 24px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+
+.recordings-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.recording-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+.recording-item__top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.play-btn {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  border-radius: 50%;
+  border: none;
+  background: var(--brand);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.play-btn:hover { filter: brightness(1.1); }
+
+.recording-item__meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.recording-name {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 6px;
+  width: 100%;
+  max-width: 260px;
+}
+
+.recording-name:hover,
+.recording-name:focus {
+  border-color: var(--border);
+  outline: none;
+  background: var(--bg-elevated);
+}
+
+.recording-sub {
+  display: flex;
+  gap: 6px;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  margin-top: 2px;
+  padding: 0 6px;
+}
+
+.seek-bar {
+  width: 100%;
+  margin-top: 10px;
+  accent-color: var(--brand);
+}
+
+.recording-item__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.icon-action {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.icon-action:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+.delete-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 480px) {
+  .app-header h1 { font-size: 1.5rem; }
+  .recorder-card { padding: 18px; }
+  .record-btn { width: 68px; height: 68px; }
+  .recording-name { max-width: 160px; }
+}
