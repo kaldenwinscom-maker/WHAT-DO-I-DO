@@ -19,6 +19,7 @@ mobile app (Capacitor, for Android/iOS).
   let it auto-purge after 7 days
 - Recordings persist across restarts via IndexedDB
 - Friendly error message if microphone access is denied or unavailable
+- Ask Claude or ChatGPT questions about a recording's notes/transcript
 
 ### Transcription
 
@@ -27,14 +28,30 @@ API and drop the result into that recording's notes as bullets (one
 sentence per line). The first time you use it, it'll ask for an OpenAI
 API key (get one at platform.openai.com) — the key is stored only in
 your browser's `localStorage` and is sent solely to `api.openai.com`
-when you transcribe. Click **🔑** in the header any time to change or
-clear it. This feature needs your own key and internet access; it does
-nothing without one.
+when you transcribe. Click **🔑 Set OpenAI API key** in the header any
+time to change or clear it. This feature needs your own key and
+internet access; it does nothing without one.
+
+### Ask AI (Claude / ChatGPT)
+
+Click **🤖 Ask AI** on a recording to open a small chat panel scoped to
+that recording — it answers using that recording's name and notes as
+context. Toggle between **Claude** and **ChatGPT** per message. Claude
+calls use the official `@anthropic-ai/sdk` (see `web-src/claude-client.js`,
+bundled into `web/claude-client.bundle.js` — rebuild with
+`npm run build:claude-client` if you edit the source); ChatGPT calls use
+OpenAI's Chat Completions API directly. Claude needs its own API key
+(**🔑 Set Anthropic API key** in the header, from console.anthropic.com);
+ChatGPT reuses the OpenAI key from Transcription above. Both keys live
+only in `localStorage` and are sent only to their own provider's API —
+chat history is saved per recording in IndexedDB.
 
 ## Project layout
 
 ```
-web/                  Shared app: index.html, style.css, app.js, db.js
+web/                  Shared app: index.html, style.css, app.js, db.js,
+                       claude-client.bundle.js (built, see below)
+web-src/               Claude client source (bundled, not loaded directly)
 main.js, preload.js   Electron entry point (desktop app)
 capacitor.config.json Capacitor config (mobile app)
 android/              Generated native Android project

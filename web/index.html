@@ -12,7 +12,10 @@
     <header class="app-header">
       <h1>🎙️ Voice Recorder</h1>
       <p class="subtitle">Record, save, and manage your voice notes — right in the browser.</p>
-      <button id="apiKeyBtn" class="api-key-btn" title="Set the OpenAI API key used for transcription">🔑 Set OpenAI API key</button>
+      <div class="key-buttons">
+        <button id="openaiKeyBtn" class="api-key-btn" title="Set the OpenAI API key used for transcription and ChatGPT">🔑 Set OpenAI API key</button>
+        <button id="anthropicKeyBtn" class="api-key-btn" title="Set the Anthropic API key used for Claude">🔑 Set Anthropic API key</button>
+      </div>
     </header>
 
     <!-- Permission / error banner -->
@@ -101,6 +104,7 @@
       <div class="recording-item__actions">
         <button class="icon-action notes-toggle" title="Add/view notes">📝 Notes</button>
         <button class="icon-action transcribe-btn" title="Transcribe to bullet-point notes (OpenAI Whisper)">🗨️ Transcribe</button>
+        <button class="icon-action chat-toggle" title="Ask an AI about this recording">🤖 Ask AI</button>
         <button class="icon-action download-webm" title="Download as .webm">⭳ WEBM</button>
         <button class="icon-action download-wav" title="Download as .wav">⭳ WAV</button>
         <button class="icon-action delete-btn" title="Move to trash">🗑 Delete</button>
@@ -109,10 +113,22 @@
         <ul class="notes-list" hidden></ul>
         <textarea class="notes-input" placeholder="Type notes, one per line — each line becomes a bullet" hidden></textarea>
       </div>
+      <div class="chat-section" hidden>
+        <div class="chat-provider-toggle">
+          <button class="chat-provider-btn is-active" data-provider="claude">Claude</button>
+          <button class="chat-provider-btn" data-provider="chatgpt">ChatGPT</button>
+        </div>
+        <ul class="chat-messages"></ul>
+        <div class="chat-input-row">
+          <input class="chat-input" type="text" placeholder="Ask about this recording…" />
+          <button class="chat-send-btn" aria-label="Send">➤</button>
+        </div>
+      </div>
     </li>
   </template>
 
   <script src="db.js"></script>
+  <script src="claude-client.bundle.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

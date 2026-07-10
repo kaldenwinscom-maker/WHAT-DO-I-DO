@@ -25,7 +25,8 @@
   const trashEmptyState = document.getElementById("trashEmptyState");
   const searchInput = document.getElementById("searchInput");
   const noMatchesState = document.getElementById("noMatchesState");
-  const apiKeyBtn = document.getElementById("apiKeyBtn");
+  const openaiKeyBtn = document.getElementById("openaiKeyBtn");
+  const anthropicKeyBtn = document.getElementById("anthropicKeyBtn");
 
   const TAGS = {
     work: { label: "Work", color: "#5b8cff" },
@@ -34,6 +35,7 @@
   };
   const TRASH_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
   const OPENAI_KEY_STORAGE = "voiceRecorderOpenAIKey";
+  const ANTHROPIC_KEY_STORAGE = "voiceRecorderAnthropicKey";
   let activeTagFilter = "all";
   let searchQuery = "";
 
@@ -276,6 +278,8 @@
       tag: null,
       trashed: false,
       trashedAt: null,
+      chat: [],
+      chatProvider: "claude",
     };
 
     await RecordingsDB.addRecording(record);
@@ -386,6 +390,32 @@
     return name.replace(/[\\/:*?"<>|]/g, "_").trim() || "recording";
   }
 
+  // ---------- ChatGPT (used by the per-recording chat panel) ----------
+  async function sendChatGptMessage({ apiKey, systemPrompt, messages }) {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [{ role: "system", content: systemPrompt }, ...messages],
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => null);
+      const message = (errorBody && errorBody.error && errorBody.error.message) || `ChatGPT request failed (HTTP ${response.status}).`;
+      const error = new Error(response.status === 401 ? "That OpenAI API key was rejected." : message);
+      error.isAuthError = response.status === 401;
+      throw error;
+    }
+
+    const data = await response.json();
+    return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
+  }
+
   // ---------- Waveform thumbnails ----------
   let decodingAudioContext = null;
   function getDecodingAudioContext() {
@@ -445,29 +475,53 @@
     trashEmptyState.hidden = count > 0;
   }
 
-  // ---------- OpenAI API key (used for transcription only) ----------
-  function getApiKey() {
+  // ---------- OpenAI API key (used for transcription and ChatGPT) ----------
+  function getOpenAiKey() {
     return localStorage.getItem(OPENAI_KEY_STORAGE) || "";
   }
 
-  function setApiKey(key) {
+  function setOpenAiKey(key) {
     if (key) localStorage.setItem(OPENAI_KEY_STORAGE, key);
     else localStorage.removeItem(OPENAI_KEY_STORAGE);
-    apiKeyBtn.textContent = key ? "🔑 API key set" : "🔑 Set OpenAI API key";
-    apiKeyBtn.classList.toggle("is-set", Boolean(key));
+    openaiKeyBtn.textContent = key ? "🔑 OpenAI key set" : "🔑 Set OpenAI API key";
+    openaiKeyBtn.classList.toggle("is-set", Boolean(key));
   }
 
-  function promptForApiKey() {
+  function promptForOpenAiKey() {
     const input = prompt(
-      "Enter your OpenAI API key (used only to call the Whisper transcription API; stored locally in this browser, never sent anywhere else):",
-      getApiKey()
+      "Enter your OpenAI API key (used to call the Whisper transcription API and ChatGPT; stored locally in this browser, never sent anywhere else):",
+      getOpenAiKey()
     );
-    if (input === null) return getApiKey();
-    setApiKey(input.trim());
-    return getApiKey();
+    if (input === null) return getOpenAiKey();
+    setOpenAiKey(input.trim());
+    return getOpenAiKey();
   }
 
-  apiKeyBtn.addEventListener("click", promptForApiKey);
+  openaiKeyBtn.addEventListener("click", promptForOpenAiKey);
+
+  // ---------- Anthropic API key (used for Claude) ----------
+  function getAnthropicKey() {
+    return localStorage.getItem(ANTHROPIC_KEY_STORAGE) || "";
+  }
+
+  function setAnthropicKey(key) {
+    if (key) localStorage.setItem(ANTHROPIC_KEY_STORAGE, key);
+    else localStorage.removeItem(ANTHROPIC_KEY_STORAGE);
+    anthropicKeyBtn.textContent = key ? "🔑 Anthropic key set" : "🔑 Set Anthropic API key";
+    anthropicKeyBtn.classList.toggle("is-set", Boolean(key));
+  }
+
+  function promptForAnthropicKey() {
+    const input = prompt(
+      "Enter your Anthropic API key (used to call Claude; stored locally in this browser, never sent anywhere except api.anthropic.com):",
+      getAnthropicKey()
+    );
+    if (input === null) return getAnthropicKey();
+    setAnthropicKey(input.trim());
+    return getAnthropicKey();
+  }
+
+  anthropicKeyBtn.addEventListener("click", promptForAnthropicKey);
 
   // ---------- Recordings list rendering ----------
   function updateEmptyState() {
@@ -499,6 +553,15 @@
     const notesInput = node.querySelector(".notes-input");
     const tagDots = node.querySelectorAll(".tag-dot");
     const transcribeBtn = node.querySelector(".transcribe-btn");
+    const chatToggle = node.querySelector(".chat-toggle");
+    const chatSection = node.querySelector(".chat-section");
+    const chatProviderBtns = node.querySelectorAll(".chat-provider-btn");
+    const chatMessages = node.querySelector(".chat-messages");
+    const chatInput = node.querySelector(".chat-input");
+    const chatSendBtn = node.querySelector(".chat-send-btn");
+
+    if (!Array.isArray(record.chat)) record.chat = [];
+    if (!record.chatProvider) record.chatProvider = "claude";
 
     node.dataset.id = record.id;
     nameInput.value = record.name;
@@ -724,8 +787,8 @@
 
     // -- Transcribe (speech-to-text via OpenAI Whisper, saved as bullet notes) --
     transcribeBtn.addEventListener("click", async () => {
-      let key = getApiKey();
-      if (!key) key = promptForApiKey();
+      let key = getOpenAiKey();
+      if (!key) key = promptForOpenAiKey();
       if (!key) return;
 
       if (notesLines().length > 0) {
@@ -752,7 +815,7 @@
 
         if (!response.ok) {
           if (response.status === 401) {
-            setApiKey("");
+            setOpenAiKey("");
             throw new Error("That OpenAI API key was rejected, so it's been cleared. Please add a valid key and try again.");
           }
           const errorBody = await response.json().catch(() => null);
@@ -783,6 +846,119 @@
         transcribeBtn.textContent = originalLabel;
       }
     });
+
+    // -- Chat (ask Claude or ChatGPT about this recording) --
+    function buildChatSystemPrompt() {
+      const notes = (record.notes || "").trim();
+      return [
+        `You are answering questions about a voice recording titled "${record.name}".`,
+        notes ? `Its notes/transcript:\n${notes}` : "It has no notes or transcript yet — say so if the question depends on content you don't have.",
+        "Answer concisely based on this context.",
+      ].join("\n\n");
+    }
+
+    function markHasChat() {
+      chatToggle.classList.toggle("is-active", record.chat.length > 0);
+    }
+
+    function updateChatProviderUI() {
+      chatProviderBtns.forEach((btn) => {
+        btn.classList.toggle("is-active", btn.dataset.provider === record.chatProvider);
+      });
+    }
+
+    function renderChatMessages() {
+      chatMessages.innerHTML = "";
+      record.chat.forEach((msg) => {
+        const li = document.createElement("li");
+        const kind = msg.isError ? "error" : msg.role === "user" ? "user" : "assistant";
+        li.className = `chat-message chat-message--${kind}`;
+        li.textContent = msg.content;
+        chatMessages.appendChild(li);
+      });
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    chatToggle.addEventListener("click", () => {
+      chatSection.hidden = !chatSection.hidden;
+      if (!chatSection.hidden) {
+        renderChatMessages();
+        chatInput.focus();
+      }
+    });
+
+    chatProviderBtns.forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        record.chatProvider = btn.dataset.provider;
+        await RecordingsDB.updateRecording(record.id, { chatProvider: record.chatProvider });
+        updateChatProviderUI();
+      });
+    });
+
+    async function sendChatMessage() {
+      const question = chatInput.value.trim();
+      if (!question) return;
+
+      const provider = record.chatProvider;
+      let key;
+      if (provider === "claude") {
+        key = getAnthropicKey();
+        if (!key) key = promptForAnthropicKey();
+      } else {
+        key = getOpenAiKey();
+        if (!key) key = promptForOpenAiKey();
+      }
+      if (!key) return;
+
+      chatInput.value = "";
+      record.chat.push({ role: "user", content: question });
+      renderChatMessages();
+      markHasChat();
+
+      const pendingLi = document.createElement("li");
+      pendingLi.className = "chat-message chat-message--assistant chat-message--pending";
+      pendingLi.textContent = "…";
+      chatMessages.appendChild(pendingLi);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+
+      chatSendBtn.disabled = true;
+      chatInput.disabled = true;
+
+      try {
+        const systemPrompt = buildChatSystemPrompt();
+        const history = record.chat.map((msg) => ({ role: msg.role, content: msg.content }));
+        const answer =
+          provider === "claude"
+            ? await window.ClaudeClient.sendClaudeMessage({ apiKey: key, systemPrompt, messages: history })
+            : await sendChatGptMessage({ apiKey: key, systemPrompt, messages: history });
+        record.chat.push({ role: "assistant", content: answer || "(no response)" });
+      } catch (err) {
+        let message;
+        if (provider === "claude") {
+          message = window.ClaudeClient.classifyClaudeError(err);
+          if (window.ClaudeClient.isClaudeAuthError(err)) setAnthropicKey("");
+        } else {
+          message = err.message || "Something went wrong talking to ChatGPT.";
+          if (err.isAuthError) setOpenAiKey("");
+        }
+        record.chat.push({ role: "assistant", content: message, isError: true });
+      } finally {
+        pendingLi.remove();
+        chatSendBtn.disabled = false;
+        chatInput.disabled = false;
+        renderChatMessages();
+        markHasChat();
+        await RecordingsDB.updateRecording(record.id, { chat: record.chat });
+      }
+    }
+
+    chatSendBtn.addEventListener("click", sendChatMessage);
+    chatInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") sendChatMessage();
+    });
+
+    updateChatProviderUI();
+    markHasChat();
 
     // -- Delete (moves to trash, recoverable for a while) --
     deleteBtn.addEventListener("click", async () => {
@@ -865,7 +1041,8 @@
   // ---------- Init ----------
   async function init() {
     drawIdleLine();
-    setApiKey(getApiKey());
+    setOpenAiKey(getOpenAiKey());
+    setAnthropicKey(getAnthropicKey());
     window.addEventListener("resize", () => {
       if (recordState === "idle") drawIdleLine();
     });

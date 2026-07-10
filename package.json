@@ -9,6 +9,7 @@
     "start": "electron .",
     "web": "npx --yes http-server web -p 8080 -c-1",
     "dist:mac": "electron-builder --mac --publish=never",
+    "build:claude-client": "esbuild web-src/claude-client.js --bundle --format=iife --platform=browser --external:node:fs --external:node:path --external:node:os --external:node:crypto --external:node:child_process --outfile=web/claude-client.bundle.js",
     "cap:sync": "npx cap sync",
     "cap:add:android": "npx cap add android",
     "cap:add:ios": "npx cap add ios",
@@ -35,9 +36,11 @@
     }
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.110.0",
+    "@capacitor/cli": "^6.1.0",
     "electron": "^33.0.0",
     "electron-builder": "^26.0.0",
-    "@capacitor/cli": "^6.1.0"
+    "esbuild": "^0.24.2"
   },
   "dependencies": {
     "@capacitor/android": "^6.1.0",
