@@ -23,6 +23,9 @@
   const trashSection = document.getElementById("trashSection");
   const trashList = document.getElementById("trashList");
   const trashEmptyState = document.getElementById("trashEmptyState");
+  const searchInput = document.getElementById("searchInput");
+  const noMatchesState = document.getElementById("noMatchesState");
+  const apiKeyBtn = document.getElementById("apiKeyBtn");
 
   const TAGS = {
     work: { label: "Work", color: "#5b8cff" },
@@ -30,7 +33,9 @@
     idea: { label: "Idea", color: "#f5a623" },
   };
   const TRASH_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+  const OPENAI_KEY_STORAGE = "voiceRecorderOpenAIKey";
   let activeTagFilter = "all";
+  let searchQuery = "";
 
   // ---------- Recording state ----------
   let mediaStream = null;
@@ -404,20 +409,30 @@
     return peaks;
   }
 
-  // ---------- Tag filter / trash toolbar ----------
-  function applyTagFilter() {
+  // ---------- Tag filter / search / trash toolbar ----------
+  function updateVisibility() {
+    let visibleCount = 0;
     recordingsList.querySelectorAll(".recording-item").forEach((node) => {
-      const matches = activeTagFilter === "all" || node.dataset.tag === activeTagFilter;
-      node.hidden = !matches;
+      const tagMatches = activeTagFilter === "all" || node.dataset.tag === activeTagFilter;
+      const searchMatches = !searchQuery || (node.dataset.search || "").includes(searchQuery);
+      const visible = tagMatches && searchMatches;
+      node.hidden = !visible;
+      if (visible) visibleCount += 1;
     });
+    noMatchesState.hidden = visibleCount > 0 || recordingsList.children.length === 0;
   }
 
   tagFilterButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
       activeTagFilter = btn.dataset.tag;
       tagFilterButtons.forEach((b) => b.classList.toggle("is-active", b === btn));
-      applyTagFilter();
+      updateVisibility();
     });
+  });
+
+  searchInput.addEventListener("input", () => {
+    searchQuery = searchInput.value.trim().toLowerCase();
+    updateVisibility();
   });
 
   trashToggle.addEventListener("click", () => {
@@ -430,9 +445,35 @@
     trashEmptyState.hidden = count > 0;
   }
 
+  // ---------- OpenAI API key (used for transcription only) ----------
+  function getApiKey() {
+    return localStorage.getItem(OPENAI_KEY_STORAGE) || "";
+  }
+
+  function setApiKey(key) {
+    if (key) localStorage.setItem(OPENAI_KEY_STORAGE, key);
+    else localStorage.removeItem(OPENAI_KEY_STORAGE);
+    apiKeyBtn.textContent = key ? "🔑 API key set" : "🔑 Set OpenAI API key";
+    apiKeyBtn.classList.toggle("is-set", Boolean(key));
+  }
+
+  function promptForApiKey() {
+    const input = prompt(
+      "Enter your OpenAI API key (used only to call the Whisper transcription API; stored locally in this browser, never sent anywhere else):",
+      getApiKey()
+    );
+    if (input === null) return getApiKey();
+    setApiKey(input.trim());
+    return getApiKey();
+  }
+
+  apiKeyBtn.addEventListener("click", promptForApiKey);
+
   // ---------- Recordings list rendering ----------
   function updateEmptyState() {
-    emptyState.hidden = recordingsList.children.length > 0;
+    const hasRecordings = recordingsList.children.length > 0;
+    emptyState.hidden = hasRecordings;
+    updateVisibility();
   }
 
   function renderRecordingItem(record, { prepend = false } = {}) {
@@ -457,12 +498,18 @@
     const notesList = node.querySelector(".notes-list");
     const notesInput = node.querySelector(".notes-input");
     const tagDots = node.querySelectorAll(".tag-dot");
+    const transcribeBtn = node.querySelector(".transcribe-btn");
 
     node.dataset.id = record.id;
     nameInput.value = record.name;
     dateEl.textContent = new Date(record.createdAt).toLocaleString();
     durationEl.textContent = formatTime(record.duration || 0);
     audioEl.src = objectUrl;
+
+    function updateSearchIndex() {
+      node.dataset.search = `${record.name} ${record.notes || ""}`.toLowerCase();
+    }
+    updateSearchIndex();
 
     // -- Tag --
     function updateTagUI() {
@@ -481,7 +528,7 @@
         record.tag = newTag;
         await RecordingsDB.updateRecording(record.id, { tag: newTag });
         updateTagUI();
-        applyTagFilter();
+        updateVisibility();
       });
     });
 
@@ -591,6 +638,8 @@
       nameInput.value = newName;
       await RecordingsDB.updateRecording(record.id, { name: newName });
       record.name = newName;
+      updateSearchIndex();
+      updateVisibility();
     });
 
     // -- Download --
@@ -665,11 +714,75 @@
         record.notes = newNotes;
         await RecordingsDB.updateRecording(record.id, { notes: newNotes });
         markHasNotes();
+        updateSearchIndex();
+        updateVisibility();
       }
       showNotesView();
     });
 
     markHasNotes();
+
+    // -- Transcribe (speech-to-text via OpenAI Whisper, saved as bullet notes) --
+    transcribeBtn.addEventListener("click", async () => {
+      let key = getApiKey();
+      if (!key) key = promptForApiKey();
+      if (!key) return;
+
+      if (notesLines().length > 0) {
+        const proceed = confirm("This will replace this recording's existing notes with the transcript. Continue?");
+        if (!proceed) return;
+      }
+
+      const originalLabel = transcribeBtn.textContent;
+      transcribeBtn.disabled = true;
+      transcribeBtn.textContent = "⏳ Transcribing…";
+
+      try {
+        const ext = record.mimeType.includes("ogg") ? "ogg" : "webm";
+        const file = new File([record.blob], `recording.${ext}`, { type: record.mimeType });
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("model", "whisper-1");
+
+        const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${key}` },
+          body: formData,
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            setApiKey("");
+            throw new Error("That OpenAI API key was rejected, so it's been cleared. Please add a valid key and try again.");
+          }
+          const errorBody = await response.json().catch(() => null);
+          throw new Error((errorBody && errorBody.error && errorBody.error.message) || `Transcription failed (HTTP ${response.status}).`);
+        }
+
+        const data = await response.json();
+        const transcript = (data.text || "").trim();
+        if (!transcript) throw new Error("No speech was detected in this recording.");
+
+        const bulletNotes = transcript
+          .split(/(?<=[.?!])\s+/)
+          .map((sentence) => sentence.trim())
+          .filter(Boolean)
+          .join("\n");
+
+        record.notes = bulletNotes;
+        await RecordingsDB.updateRecording(record.id, { notes: bulletNotes });
+        markHasNotes();
+        updateSearchIndex();
+        updateVisibility();
+        notesSection.hidden = false;
+        showNotesView();
+      } catch (err) {
+        showError(err.message || "Transcription failed.");
+      } finally {
+        transcribeBtn.disabled = false;
+        transcribeBtn.textContent = originalLabel;
+      }
+    });
 
     // -- Delete (moves to trash, recoverable for a while) --
     deleteBtn.addEventListener("click", async () => {
@@ -686,7 +799,7 @@
 
     if (prepend) recordingsList.prepend(node);
     else recordingsList.appendChild(node);
-    applyTagFilter();
+    updateVisibility();
   }
 
   // ---------- Trash ----------
@@ -752,6 +865,7 @@
   // ---------- Init ----------
   async function init() {
     drawIdleLine();
+    setApiKey(getApiKey());
     window.addEventListener("resize", () => {
       if (recordState === "idle") drawIdleLine();
     });

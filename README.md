@@ -11,12 +11,25 @@ mobile app (Capacitor, for Android/iOS).
 - mm:ss timer, spacebar shortcut to start/stop
 - Recordings list: play/pause, static waveform thumbnail (click to seek),
   0.5x/1x/1.5x/2x playback speed, rename, download as `.webm`/`.wav`
-- Per-recording notes as a bullet list
+- Per-recording notes as a bullet list, or auto-fill them by
+  transcribing the recording (OpenAI Whisper API, bring your own key)
+- Search box filters recordings by name and notes text
 - Color tags (Work/Personal/Idea) with a filter bar to show only one tag
 - Delete moves a recording to Trash instead of wiping it; restore it or
   let it auto-purge after 7 days
 - Recordings persist across restarts via IndexedDB
 - Friendly error message if microphone access is denied or unavailable
+
+### Transcription
+
+Click **🗨️ Transcribe** on a recording to send it to OpenAI's Whisper
+API and drop the result into that recording's notes as bullets (one
+sentence per line). The first time you use it, it'll ask for an OpenAI
+API key (get one at platform.openai.com) — the key is stored only in
+your browser's `localStorage` and is sent solely to `api.openai.com`
+when you transcribe. Click **🔑** in the header any time to change or
+clear it. This feature needs your own key and internet access; it does
+nothing without one.
 
 ## Project layout
 

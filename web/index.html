@@ -12,6 +12,7 @@
     <header class="app-header">
       <h1>🎙️ Voice Recorder</h1>
       <p class="subtitle">Record, save, and manage your voice notes — right in the browser.</p>
+      <button id="apiKeyBtn" class="api-key-btn" title="Set the OpenAI API key used for transcription">🔑 Set OpenAI API key</button>
     </header>
 
     <!-- Permission / error banner -->
@@ -39,6 +40,7 @@
     </main>
 
     <section class="recordings-section">
+      <input id="searchInput" class="search-input" type="search" placeholder="🔍 Search recordings & notes…" />
       <div class="recordings-toolbar">
         <div class="tag-filters">
           <button class="tag-filter is-active" data-tag="all">All</button>
@@ -51,6 +53,7 @@
       </div>
       <h2>Your Recordings</h2>
       <div id="emptyState" class="empty-state">No recordings yet. Hit the red button to make your first one!</div>
+      <div id="noMatchesState" class="empty-state" hidden>No recordings match your search/filter.</div>
       <ul id="recordingsList" class="recordings-list"></ul>
     </section>
 
@@ -97,6 +100,7 @@
       </div>
       <div class="recording-item__actions">
         <button class="icon-action notes-toggle" title="Add/view notes">📝 Notes</button>
+        <button class="icon-action transcribe-btn" title="Transcribe to bullet-point notes (OpenAI Whisper)">🗨️ Transcribe</button>
         <button class="icon-action download-webm" title="Download as .webm">⭳ WEBM</button>
         <button class="icon-action download-wav" title="Download as .wav">⭳ WAV</button>
         <button class="icon-action delete-btn" title="Move to trash">🗑 Delete</button>

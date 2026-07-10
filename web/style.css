@@ -43,9 +43,29 @@ body {
 }
 
 .subtitle {
-  margin: 0;
+  margin: 0 0 10px;
   color: var(--text-dim);
   font-size: 0.95rem;
+}
+
+.api-key-btn {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  padding: 5px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.api-key-btn:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+.api-key-btn.is-set {
+  color: var(--success);
+  border-color: var(--success);
 }
 
 /* ---------- Banner ---------- */
@@ -229,6 +249,26 @@ kbd {
   text-align: center;
   border: 1px dashed var(--border);
   border-radius: var(--radius);
+}
+
+.search-input {
+  width: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 0.85rem;
+  padding: 10px 14px;
+  border-radius: 10px;
+  margin-bottom: 12px;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--brand);
+}
+
+.search-input::placeholder {
+  color: var(--text-dim);
 }
 
 .recordings-toolbar {
@@ -471,9 +511,19 @@ kbd {
   border-color: var(--text-dim);
 }
 
+.icon-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .delete-btn:hover {
   color: var(--accent);
   border-color: var(--accent);
+}
+
+.transcribe-btn:hover {
+  color: var(--brand);
+  border-color: var(--brand);
 }
 
 .notes-toggle.is-active {
