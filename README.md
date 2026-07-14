@@ -26,6 +26,20 @@ mobile app (Capacitor, for Android/iOS).
   as a `.zip` — everything is stored locally in the browser, so this is
   the only way to move data between devices or survive clearing your
   browser data
+- Installable as a PWA (Progressive Web App) — works offline and gets
+  its own home-screen/dock icon, no Electron or app-store install needed
+
+### Installing as a PWA
+
+The web version is a full PWA: open it in Chrome, Edge, or Safari and
+use the browser's "Install app" / "Add to Home Screen" option (usually
+in the address bar or share menu) to get it as a standalone app with
+its own icon — on desktop, Android, or iOS. A service worker
+(`web/sw.js`) caches the app shell on first load, so it keeps working
+with no internet connection after that (your recordings already lived
+fully offline in IndexedDB; this just makes the app itself load
+offline too). Bump `CACHE_NAME` in `sw.js` when shipping changes to
+`web/` so installed copies pick up the update.
 
 ### Transcription
 

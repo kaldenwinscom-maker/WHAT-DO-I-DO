@@ -1376,5 +1376,14 @@
     updateTrashCount();
   }
 
+  // Registering a service worker requires a secure context (https or
+  // localhost) — this is a silent no-op under Electron/Capacitor's
+  // file:// or capacitor:// schemes, which don't need it anyway.
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    });
+  }
+
   init();
 })();
