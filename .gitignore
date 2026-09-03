@@ -1,0 +1,10 @@
+# Node / npm
+node_modules/
+npm-debug.log*
+
+# Electron build output
+dist/
+out/
+
+# OS
+.DS_Store

@@ -1,0 +1,50 @@
+{
+  "name": "voice-recorder",
+  "version": "1.0.0",
+  "description": "Voice Recorder - record, save, and manage voice notes. Runs as a web page, a desktop app (Electron), or a mobile app (Capacitor).",
+  "author": "Voice Recorder",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "web": "npx --yes http-server web -p 8080 -c-1",
+    "dist:mac": "electron-builder --mac --publish=never",
+    "build:claude-client": "esbuild web-src/claude-client.js --bundle --format=iife --platform=browser --external:node:fs --external:node:path --external:node:os --external:node:crypto --external:node:child_process --outfile=web/claude-client.bundle.js",
+    "cap:sync": "npx cap sync",
+    "cap:add:android": "npx cap add android",
+    "cap:add:ios": "npx cap add ios",
+    "cap:open:android": "npx cap open android",
+    "cap:open:ios": "npx cap open ios"
+  },
+  "build": {
+    "appId": "com.kaldenwins.voicerecorder",
+    "productName": "Voice Recorder",
+    "files": [
+      "main.js",
+      "preload.js",
+      "web/**/*"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    }
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.110.0",
+    "@capacitor/cli": "^6.1.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^26.0.0",
+    "esbuild": "^0.24.2"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.0",
+    "@capacitor/core": "^6.1.0",
+    "@capacitor/ios": "^6.1.0"
+  }
+}
