@@ -1,6 +1,6 @@
 // 36 slots: 0-8 are the hotbar, 9-35 the main inventory.
 
-import { ITEMS, type ItemId } from '../data/items';
+import { ITEM_ALIASES, ITEMS, type ItemId } from '../data/items';
 
 export interface Stack {
   item: ItemId;
@@ -99,7 +99,9 @@ export class Inventory {
   load(data: { slots: ([ItemId, number] | null)[]; selected: number }): void {
     this.slots = new Array(TOTAL_SLOTS).fill(null);
     data.slots.forEach((s, i) => {
-      if (s && i < TOTAL_SLOTS && ITEMS[s[0]] && s[1] > 0) this.slots[i] = { item: s[0], count: s[1] };
+      if (!s || i >= TOTAL_SLOTS || s[1] <= 0) return;
+      const id = (ITEM_ALIASES[s[0]] ?? s[0]) as ItemId;
+      if (ITEMS[id]) this.slots[i] = { item: id, count: Math.min(s[1], ITEMS[id].maxStack) };
     });
     this.selected = Math.max(0, Math.min(HOTBAR_SIZE - 1, data.selected | 0));
     this.changed();

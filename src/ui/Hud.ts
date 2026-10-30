@@ -43,6 +43,8 @@ export class Hud {
   private flash = el('div');
   private hint = el('div');
   private saved = el('div');
+  private bannerEl = el('div');
+  private prompt = el('div');
 
   constructor(parent: HTMLElement) {
     this.root.id = 'hud';
@@ -79,7 +81,9 @@ export class Hud {
     this.hint.id = 'hint';
     this.saved.id = 'saved';
     this.saved.textContent = 'Progress saved';
-    this.root.append(this.flash, this.toasts, this.hint, this.saved);
+    this.bannerEl.id = 'banner';
+    this.prompt.id = 'prompt';
+    this.root.append(this.flash, this.toasts, this.hint, this.saved, this.bannerEl, this.prompt);
     parent.appendChild(this.root);
   }
 
@@ -154,6 +158,20 @@ export class Hud {
       t.classList.add('out');
       setTimeout(() => t.remove(), 400);
     }, seconds * 1000);
+  }
+
+  /** Big centre-screen announcement, e.g. a new blueprint. */
+  banner(kicker: string, title: string, sub: string, icon?: string): void {
+    this.bannerEl.innerHTML = `${icon ? `<img src="${icon}">` : ''}<div class="k">${kicker}</div><div class="t">${title}</div><div class="s">${sub}</div>`;
+    this.bannerEl.classList.remove('show');
+    void this.bannerEl.offsetWidth;
+    this.bannerEl.classList.add('show');
+  }
+
+  /** Context prompt under the crosshair (HTML allowed, e.g. <kbd>E</kbd>). */
+  setPrompt(html: string | null): void {
+    const v = html ?? '';
+    if (this.prompt.innerHTML !== v) this.prompt.innerHTML = v;
   }
 
   damageFlash(): void {

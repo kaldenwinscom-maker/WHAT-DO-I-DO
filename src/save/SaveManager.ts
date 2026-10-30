@@ -4,6 +4,8 @@
 import { CONFIG } from '../config';
 import type { ItemId } from '../data/items';
 import type { SurvivalState } from '../player/Survival';
+import type { SavedStructure } from '../build/Structures';
+import type { CraftQueue } from '../crafting/Crafting';
 
 /** A placed block from the voxel version of the game (save v1), kept for conversion. */
 export type LegacyBlock = [number, number, number, string];
@@ -14,7 +16,7 @@ export interface RunStats {
 }
 
 export interface SaveData {
-  version: 3;
+  version: 4;
   savedAt: number;
   playSeconds: number;
   clock: { day: number; seconds: number };
@@ -25,9 +27,14 @@ export interface SaveData {
   magic: { breaks: number; starterIndex: number };
   /** Blocks placed before the visual rework; converted to building pieces when building lands. */
   legacyBlocks: LegacyBlock[];
+  blueprints: { unlocked: string[]; tracked: string[] };
+  structures: SavedStructure[];
+  handQueue: CraftQueue;
   /** Set when this save was just migrated from an older version (cleared after the notice). */
   migratedFrom?: number;
 }
+
+type SaveDataV3 = Omit<SaveData, 'version' | 'blueprints' | 'structures' | 'handQueue'> & { version: 3 };
 
 type Player = SaveData['player'];
 type Inv = SaveData['inventory'];
@@ -57,9 +64,15 @@ const freshSurvival = (): SurvivalState => ({
   sickSeconds: 0,
 });
 
-function migrate(raw: SaveDataV1 | SaveDataV2 | SaveData): SaveData | null {
+/** v3 -> v4: crafting and blueprints arrive. Blueprints for past days unlock on load. */
+function toV4(v3: SaveDataV3): SaveData {
+  return { ...v3, version: 4, blueprints: { unlocked: [], tracked: [] }, structures: [], handQueue: [], migratedFrom: v3.migratedFrom ?? 3 };
+}
+
+function migrate(raw: SaveDataV1 | SaveDataV2 | SaveDataV3 | SaveData): SaveData | null {
   let v2: SaveDataV2;
-  if (raw.version === 3) return raw;
+  if (raw.version === 4) return raw;
+  if (raw.version === 3) return toV4(raw);
   if (raw.version === 1 && Array.isArray(raw.world)) {
     v2 = {
       version: 2,
@@ -82,7 +95,7 @@ function migrate(raw: SaveDataV1 | SaveDataV2 | SaveData): SaveData | null {
   const t = v2.timeOfDay;
   const seconds =
     t >= 0.25 && t < 0.75 ? ((t - 0.25) / 0.5) * daySec : daySec + (((t - 0.75 + 1) % 1) / 0.5) * CONFIG.time.nightMinutes * 60;
-  return {
+  return toV4({
     version: 3,
     savedAt: Date.now(),
     playSeconds: v2.playSeconds,
@@ -94,7 +107,7 @@ function migrate(raw: SaveDataV1 | SaveDataV2 | SaveData): SaveData | null {
     magic: v2.magic,
     legacyBlocks: v2.legacyBlocks ?? [],
     migratedFrom: v2.migratedFrom ?? 2,
-  };
+  });
 }
 
 export class SaveManager {

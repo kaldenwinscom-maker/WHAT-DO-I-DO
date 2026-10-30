@@ -31,9 +31,14 @@ Then open the URL it prints (usually http://localhost:5173) in Chrome, Safari or
 | Shift | Sprint |
 | Option / Z | Crouch (you won't walk off edges) |
 | Left click (hold) | Mine the Monolith |
-| Right click (or Ctrl + click) | Eat the held food |
+| Right click (or Ctrl + click) | Eat held food / place a held Crafting Table |
 | 1–9 / scroll | Select hotbar slot |
-| E | Inventory |
+| E | Inventory, or use a Crafting Table when standing next to it |
+| C | Hand crafting (Crafting Table, sticks, rock tools, torch) |
+| B | Blueprints: view, and TRACK up to 3 on screen |
+| G | Build a tracked blueprint once its checklist is complete |
+| R / scroll | Rotate while placing (left click places, right click cancels) |
+| F9 | Debug panel (give items, unlock blueprints, skip a day) |
 | Esc | Pause |
 
 ## Graphics quality
@@ -54,11 +59,17 @@ For testing, `?time=0.75` jumps to a time of day (0 = midnight, 0.25 sunrise, 0.
 
 All game content lives in `src/data/`:
 
+- `recipes.ts`: every recipe, its station (`hand` or `table`), ingredients and craft time
+- `blueprints.ts`: blueprints, their components, and whether the Monolith or an area can give them
+- `structures.ts`: placeable structures' footprint and height
+
 - `loot.ts`: rarity weights, loot tables per phase, starter drops, bad-event strength
 - `items.ts`: every item (name, stack size, perishable); their 3D models are in `src/items/itemModels.ts`
 - `phases.ts`: phase names, break thresholds, and each phase's Monolith look (textures, tint, vein colour)
 - `src/config.ts`:
   - `time`: day and night length in real minutes (default 7 + 7)
+  - `blueprints.dayUnlocks`: the day each blueprint unlocks; `maxTracked`
+  - `crafting`: how close you must be to use a table, and to keep it crafting
   - `survival`: hunger drain, night cold, health regen, starving, stamina costs, fall/void damage, food poisoning
   - player physics, reach, void item loss, autosave interval, fog
 
@@ -73,6 +84,8 @@ src/
   render/     asset loading, triplanar PBR materials, post-processing, quality presets
   world/      floating island, grass, rocks, sky/day-night, collision physics
   block/      the Monolith
+  build/      structures, their 3D models, and the ghost placement mode
+  crafting/   crafting queues and the blueprint book
   items/      3D item models (icons, held item, drops)
   loot/       loot rolling + bad events
   inventory/  inventory model

@@ -10,6 +10,7 @@ All third-party assets are CC0 (public domain) from [Poly Haven](https://polyhav
 | textures/bark_brown_02 | https://polyhaven.com/a/bark_brown_02 |
 | textures/dark_rock_02 | https://polyhaven.com/a/dark_rock_02 |
 | textures/snow_02 | https://polyhaven.com/a/snow_02 |
+| textures/brown_planks_04 | https://polyhaven.com/a/brown_planks_04 |
 | hdri/sky_1k.hdr | https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky |
 
 Textures are the 1K versions, re-encoded as smaller JPEGs (AO/roughness maps downscaled to 512px).

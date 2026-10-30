@@ -1,6 +1,6 @@
 // Simple character collision against terrain heightfields and static colliders.
-// The player is a vertical cylinder; colliders are vertical cylinders or axis-aligned boxes
-// (building pieces will add rotated boxes later).
+// The player is a vertical cylinder; colliders are vertical cylinders, axis-aligned boxes,
+// or boxes rotated around Y (placed structures).
 
 import * as THREE from 'three';
 
@@ -11,7 +11,48 @@ export interface Terrain {
 
 export type Collider =
   | { kind: 'cylinder'; x: number; z: number; r: number; y0: number; y1: number }
-  | { kind: 'box'; min: THREE.Vector3; max: THREE.Vector3 };
+  | { kind: 'box'; min: THREE.Vector3; max: THREE.Vector3 }
+  /** Box of half-size hx/hz centred on x/z, rotated by `rot` radians around Y. */
+  | { kind: 'obox'; x: number; z: number; hx: number; hz: number; rot: number; y0: number; y1: number };
+
+const top = (c: Collider) => (c.kind === 'box' ? c.max.y : c.y1);
+const bottom = (c: Collider) => (c.kind === 'box' ? c.min.y : c.y0);
+
+/** World XZ -> collider-local XZ for a rotated box. */
+function toLocal(c: { x: number; z: number; rot: number }, x: number, z: number): [number, number] {
+  const dx = x - c.x;
+  const dz = z - c.z;
+  const cos = Math.cos(c.rot);
+  const sin = Math.sin(c.rot);
+  return [dx * cos - dz * sin, dx * sin + dz * cos];
+}
+
+function toWorld(c: { x: number; z: number; rot: number }, lx: number, lz: number): [number, number] {
+  const cos = Math.cos(c.rot);
+  const sin = Math.sin(c.rot);
+  return [c.x + lx * cos + lz * sin, c.z - lx * sin + lz * cos];
+}
+
+/** Push a circle (centre px,pz radius r) out of a rectangle [minX,maxX]x[minZ,maxZ]. Returns the new centre, or null if no overlap. */
+function pushOutOfRect(px: number, pz: number, r: number, minX: number, maxX: number, minZ: number, maxZ: number): [number, number] | null {
+  const cx = Math.max(minX, Math.min(px, maxX));
+  const cz = Math.max(minZ, Math.min(pz, maxZ));
+  const dx = px - cx;
+  const dz = pz - cz;
+  const d2 = dx * dx + dz * dz;
+  if (d2 >= r * r) return null;
+  if (d2 > 1e-10) {
+    const d = Math.sqrt(d2);
+    return [cx + (dx / d) * r, cz + (dz / d) * r];
+  }
+  // Centre is inside: push out along the shallowest side.
+  const exits = [px - minX + r, maxX - px + r, pz - minZ + r, maxZ - pz + r];
+  const m = Math.min(...exits);
+  if (m === exits[0]) return [minX - r, pz];
+  if (m === exits[1]) return [maxX + r, pz];
+  if (m === exits[2]) return [px, minZ - r];
+  return [px, maxZ + r];
+}
 
 export class Physics {
   readonly terrains: Terrain[] = [];
@@ -38,13 +79,9 @@ export class Physics {
       }
     }
     for (const c of this.colliders) {
-      const top = c.kind === 'cylinder' ? c.y1 : c.max.y;
-      if (top > maxY) continue;
-      if (c.kind === 'cylinder') {
-        if (Math.hypot(x - c.x, z - c.z) < c.r + r * 0.5 && c.y1 > best) best = c.y1;
-      } else if (x + r * 0.5 > c.min.x && x - r * 0.5 < c.max.x && z + r * 0.5 > c.min.z && z - r * 0.5 < c.max.z) {
-        if (c.max.y > best) best = c.max.y;
-      }
+      const y = top(c);
+      if (y > maxY || y <= best) continue;
+      if (this.overlaps2D(c, x, z, r * 0.5)) best = y;
     }
     return best;
   }
@@ -53,9 +90,9 @@ export class Physics {
   ceilingHeight(x: number, z: number, r: number, y: number): number {
     let best = Infinity;
     for (const c of this.colliders) {
-      const bottom = c.kind === 'cylinder' ? c.y0 : c.min.y;
-      if (bottom < y || bottom >= best) continue;
-      if (this.overlaps2D(c, x, z, r)) best = bottom;
+      const b = bottom(c);
+      if (b < y || b >= best) continue;
+      if (this.overlaps2D(c, x, z, r)) best = b;
     }
     return best;
   }
@@ -69,8 +106,8 @@ export class Physics {
     const lo = pos.y + stepHeight;
     const hi = pos.y + h;
     for (const c of this.colliders) {
+      if (top(c) <= lo || bottom(c) >= hi) continue;
       if (c.kind === 'cylinder') {
-        if (c.y1 <= lo || c.y0 >= hi) continue;
         const dx = pos.x - c.x;
         const dz = pos.z - c.z;
         const d = Math.hypot(dx, dz);
@@ -82,35 +119,29 @@ export class Physics {
           pos.z = c.z + nz * min;
           hit = true;
         }
-      } else {
-        if (c.max.y <= lo || c.min.y >= hi) continue;
-        const cx = Math.max(c.min.x, Math.min(pos.x, c.max.x));
-        const cz = Math.max(c.min.z, Math.min(pos.z, c.max.z));
-        const dx = pos.x - cx;
-        const dz = pos.z - cz;
-        const d2 = dx * dx + dz * dz;
-        if (d2 >= r * r) continue;
-        if (d2 > 1e-10) {
-          const d = Math.sqrt(d2);
-          pos.x = cx + (dx / d) * r;
-          pos.z = cz + (dz / d) * r;
-        } else {
-          // Centre is inside the box: push out along the shallowest side.
-          const exits = [pos.x - c.min.x + r, c.max.x - pos.x + r, pos.z - c.min.z + r, c.max.z - pos.z + r];
-          const m = Math.min(...exits);
-          if (m === exits[0]) pos.x = c.min.x - r;
-          else if (m === exits[1]) pos.x = c.max.x + r;
-          else if (m === exits[2]) pos.z = c.min.z - r;
-          else pos.z = c.max.z + r;
+      } else if (c.kind === 'box') {
+        const out = pushOutOfRect(pos.x, pos.z, r, c.min.x, c.max.x, c.min.z, c.max.z);
+        if (out) {
+          [pos.x, pos.z] = out;
+          hit = true;
         }
-        hit = true;
+      } else {
+        const [lx, lz] = toLocal(c, pos.x, pos.z);
+        const out = pushOutOfRect(lx, lz, r, -c.hx, c.hx, -c.hz, c.hz);
+        if (out) {
+          [pos.x, pos.z] = toWorld(c, out[0], out[1]);
+          hit = true;
+        }
       }
     }
     return hit;
   }
 
-  private overlaps2D(c: Collider, x: number, z: number, r: number): boolean {
+  /** Does a circle at (x,z) of radius r overlap the collider's footprint? */
+  overlaps2D(c: Collider, x: number, z: number, r: number): boolean {
     if (c.kind === 'cylinder') return Math.hypot(x - c.x, z - c.z) < c.r + r;
-    return x + r > c.min.x && x - r < c.max.x && z + r > c.min.z && z - r < c.max.z;
+    if (c.kind === 'box') return x + r > c.min.x && x - r < c.max.x && z + r > c.min.z && z - r < c.max.z;
+    const [lx, lz] = toLocal(c, x, z);
+    return lx + r > -c.hx && lx - r < c.hx && lz + r > -c.hz && lz - r < c.hz;
   }
 }

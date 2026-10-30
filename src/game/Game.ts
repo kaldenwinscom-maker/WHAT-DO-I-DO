@@ -32,8 +32,23 @@ import { NightEvents } from '../world/nightEvents';
 import { Survival } from '../player/Survival';
 import { SurvivalHud } from '../ui/SurvivalHud';
 import { GameOver } from '../ui/GameOver';
+import { Structures, type PlacedStructure } from '../build/Structures';
+import { Placer } from '../build/Placer';
+import { BlueprintBook } from '../crafting/Blueprints';
+import { cancel as cancelCraft, enqueue, queueProgress, sanitizeQueue, tickQueue, type CraftQueue } from '../crafting/Crafting';
+import { BLUEPRINTS, blueprintById, type BlueprintId } from '../data/blueprints';
+import { STRUCTURES, type StructureId } from '../data/structures';
+import type { Recipe } from '../data/recipes';
+import { CraftingMenu } from '../ui/CraftingMenu';
+import { BlueprintMenu } from '../ui/BlueprintMenu';
+import { Tracker, type CraftStatus } from '../ui/Tracker';
+import { DebugPanel } from '../ui/DebugPanel';
+import { structureIconUrl } from '../ui/icons';
 
-type State = 'menu' | 'playing' | 'inventory' | 'dead';
+type Overlay = 'inventory' | 'crafting' | 'blueprints' | 'debug';
+type State = 'menu' | 'playing' | Overlay | 'dead';
+const OVERLAYS: readonly State[] = ['inventory', 'crafting', 'blueprints', 'debug'];
+const isOverlay = (s: State): s is Overlay => OVERLAYS.includes(s);
 
 interface MonolithTarget {
   point: THREE.Vector3;
@@ -70,6 +85,21 @@ export class Game {
   private readonly gameOver: GameOver;
   private stats: RunStats = { animalsRaised: 0, structuresBuilt: 0 };
   private eatCooldown = 0;
+  private readonly structures: Structures;
+  private readonly placer: Placer;
+  private readonly book = new BlueprintBook();
+  private handQueue: CraftQueue = [];
+  /** The crafting table whose menu is open (null = hand crafting). */
+  private openTable: PlacedStructure | null = null;
+  private readonly craftMenu: CraftingMenu;
+  private readonly bpMenu: BlueprintMenu;
+  private readonly tracker: Tracker;
+  private readonly debug: DebugPanel;
+  /** Suppress big unlock banners while loading / starting a run. */
+  private quietUnlocks = false;
+  private readonly torchLight = new THREE.PointLight(0xff9a48, 0, 14, 1.6);
+  private torchBurn = 0;
+  private menuRefreshTimer = 0;
 
   private state: State = 'menu';
   private target: MonolithTarget | null = null;
@@ -128,12 +158,21 @@ export class Game {
     this.scene.add(makeStones(this.island, 40, pebbleMat, avoid));
     this.addDistantIslets(islandMat);
 
+    this.structures = new Structures(this.physics);
+    this.scene.add(this.structures.group);
+    const groundAt = (x: number, z: number) => this.island.heightAt(x, z);
+    this.placer = new Placer(this.structures, [this.island.mesh], groundAt);
+    this.scene.add(this.placer.group);
+
     this.particles = new Particles(this.physics, this.monolith.phase.look);
     this.monolith.onPhaseLook = (look) => this.particles.setLook(look);
     this.scene.add(this.particles.group);
 
     this.player = new Player(this.camera);
     this.hand = new Hand(this.camera);
+    this.torchLight.position.set(0.35, -0.1, -0.5);
+    this.torchLight.castShadow = false;
+    this.camera.add(this.torchLight);
     this.input = new Input(this.renderer.domElement);
     this.post = new PostFX(this.renderer, this.scene, this.camera, this.quality);
 
@@ -155,9 +194,55 @@ export class Game {
         this.resume();
       },
     });
+    this.craftMenu = new CraftingMenu(document.body, this.inventory, {
+      craft: (recipe, n) => this.queueCraft(recipe, n),
+      cancel: (i) => {
+        cancelCraft(this.inventory, this.activeQueue(), i);
+        this.sfx.click();
+      },
+      close: () => this.closeOverlay(),
+    });
+    this.bpMenu = new BlueprintMenu(document.body, this.book, this.inventory, {
+      toggleTrack: (id) => this.toggleTrack(id),
+      close: () => this.closeOverlay(),
+    });
+    this.tracker = new Tracker(document.body, (id) => this.toggleTrack(id));
+    this.debug = new DebugPanel(document.body, {
+      give: (item, n) => this.give(item, n),
+      giveKit: () => {
+        for (const [id, n] of [['log', 40], ['stone', 40], ['fiber', 40], ['iron_ore', 12], ['flint', 2], ['berries', 10]] as const) this.give(id, n);
+      },
+      giveComponents: () => {
+        for (const [id, n] of [['planks', 30], ['stick', 20], ['rope', 10], ['cloth', 10], ['stone_brick', 20], ['nails', 20], ['hinge', 5], ['wood_frame', 3], ['beam', 2]] as const)
+          this.give(id, n);
+      },
+      unlockAll: () => {
+        for (const b of BLUEPRINTS) this.book.unlock(b.id, 'Debug');
+        this.bpMenu.refresh();
+      },
+      nextDay: () => {
+        this.clock.advance(this.clock.cycleLength - this.clock.seconds + 0.01);
+        this.sky.setTimeOfDay(this.clock.skyTime);
+      },
+      heal: () => {
+        this.survival.health = CONFIG.survival.maxHealth;
+        this.survival.hunger = CONFIG.survival.maxHunger;
+        this.survival.stamina = CONFIG.survival.maxStamina;
+        this.survival.sickSeconds = 0;
+      },
+      close: () => this.closeOverlay(),
+    });
+    this.book.onUnlock = (bp, source) => {
+      this.bpMenu.refresh();
+      if (this.quietUnlocks) return;
+      this.hud.banner('NEW BLUEPRINT', bp.name, `${source} · press B to view`, structureIconUrl(bp.id));
+      this.sfx.phaseUp();
+    };
     this.inventory.onChange = () => {
       this.hud.updateHotbar(this.inventory);
       this.invScreen.refresh();
+      this.craftMenu.refresh();
+      this.bpMenu.refresh();
       this.hand.setItem(this.inventory.selectedStack?.item ?? null);
     };
 
@@ -179,6 +264,7 @@ export class Game {
     this.menu.open('title', this.statsLine(), loadRecords().bestDays);
     this.hud.visible = false;
     this.survivalHud.visible = false;
+    this.tracker.visible = false;
 
     this.timer.connect(document);
     this.renderer.setAnimationLoop((t) => this.frame(t));
@@ -215,9 +301,19 @@ export class Game {
 
   private setState(s: State): void {
     this.state = s;
-    const inGame = s === 'playing' || s === 'inventory';
+    const inGame = s === 'playing' || isOverlay(s);
     this.hud.visible = inGame;
     this.survivalHud.visible = inGame;
+    this.tracker.visible = inGame;
+    if (s !== 'playing') {
+      this.hud.setPrompt(null);
+      this.placer.cancel();
+    }
+    if (s !== 'crafting' && this.craftMenu.isOpen) this.craftMenu.close();
+    if (s !== 'blueprints' && this.bpMenu.isOpen) this.bpMenu.close();
+    if (s !== 'debug' && this.debug.isOpen) this.debug.close();
+    if (s === 'blueprints') this.bpMenu.open();
+    if (s === 'debug') this.debug.open();
     if (s === 'menu') this.menu.open(this.playSeconds > 0 ? 'pause' : 'title', this.statsLine(), loadRecords().bestDays);
     else this.menu.close();
     if (s === 'playing' && this.pendingNotice) {
@@ -247,6 +343,7 @@ export class Game {
     this.clock.onSunrise = (day) => {
       this.hud.toastInfo(`Day ${day}`, `You made it through the night.`, '#f0c070', 6);
       this.sfx.phaseUp();
+      this.book.applyDayUnlocks(day);
     };
   }
 
@@ -258,8 +355,13 @@ export class Game {
     this.input.unlock();
     this.hud.visible = false;
     this.survivalHud.visible = false;
+    this.tracker.visible = false;
+    this.placer.cancel();
     this.menu.close();
     if (this.invScreen.isOpen) this.invScreen.close();
+    this.craftMenu.close();
+    this.bpMenu.close();
+    this.debug.close();
     this.sfx.boom();
     const run = {
       daysSurvived: this.clock.day - 1,
@@ -286,26 +388,37 @@ export class Game {
       }
     };
     document.addEventListener('pointerlockerror', () => {
-      if (this.state !== 'inventory' && this.state !== 'dead') this.setState('menu');
+      if (!isOverlay(this.state) && this.state !== 'dead') this.setState('menu');
     });
 
     this.input.onKeyDown = (code) => {
+      if (this.state === 'dead' || this.state === 'menu') return;
+      if (isOverlay(this.state)) {
+        const closes: Record<Overlay, string[]> = {
+          inventory: ['KeyE'],
+          crafting: ['KeyE', 'KeyC'],
+          blueprints: ['KeyB'],
+          debug: ['F9'],
+        };
+        if (closes[this.state].includes(code)) this.closeOverlay();
+        else if (code === 'Escape') this.setState('menu');
+        return;
+      }
+      // Playing.
+      if (this.placer.active) {
+        if (code === 'KeyR') this.placer.rotate(1);
+        if (code === 'Escape' || code === 'KeyG') this.placer.cancel();
+        return;
+      }
       if (code === 'KeyE') {
-        if (this.state === 'playing') {
-          this.state = 'inventory';
-          this.input.unlock();
-          this.setState('inventory');
-        } else if (this.state === 'inventory') {
-          this.input.lock();
-        }
-        return;
-      }
-      if (code === 'Escape' && this.state === 'inventory') {
-        this.setState('menu');
-        return;
-      }
-      if (this.state !== 'playing') return;
-      if (code.startsWith('Digit')) {
+        const table = this.nearbyTable();
+        if (table) this.openCrafting(table);
+        else this.openOverlay('inventory');
+      } else if (code === 'KeyC') this.openCrafting(null);
+      else if (code === 'KeyB') this.openOverlay('blueprints');
+      else if (code === 'F9') this.openOverlay('debug');
+      else if (code === 'KeyG') this.startBlueprintPlacement();
+      else if (code.startsWith('Digit')) {
         const n = Number(code.slice(5));
         if (n >= 1 && n <= HOTBAR_SIZE) this.selectSlot(n - 1);
       }
@@ -313,6 +426,137 @@ export class Game {
     this.invScreen.root.addEventListener('mousedown', (e) => {
       if (e.target === this.invScreen.root) this.input.lock();
     });
+  }
+
+  private openOverlay(s: Overlay): void {
+    this.state = s; // set first so the pointer unlock doesn't open the pause menu
+    this.clearMining();
+    this.input.unlock();
+    this.setState(s);
+  }
+
+  /** Close any overlay and capture the mouse again (which returns to 'playing'). */
+  private closeOverlay(): void {
+    this.input.lock();
+  }
+
+  // ---------------------------------------------------------------- crafting
+
+  private nearbyTable() {
+    return this.structures.nearest('crafting_table', this.player.position, CONFIG.crafting.useRange);
+  }
+
+  private openCrafting(table: PlacedStructure | null): void {
+    this.openTable = table;
+    this.openOverlay('crafting');
+    this.craftMenu.open(table ? 'table' : 'hand', table ? table.queue : this.handQueue);
+  }
+
+  private activeQueue(): CraftQueue {
+    return this.openTable ? this.openTable.queue : this.handQueue;
+  }
+
+  private queueCraft(recipe: Recipe, n: number): void {
+    if (recipe.station === 'table' && !this.openTable) return;
+    const queued = enqueue(this.inventory, this.activeQueue(), recipe, n);
+    if (queued > 0) this.sfx.click();
+  }
+
+  /** Run crafting queues: hand crafting always, tables only while you're close by. */
+  private tickCrafting(dt: number): void {
+    const done = (item: ItemId, count: number) => {
+      this.give(item, count);
+      this.sfx.place();
+    };
+    tickQueue(this.handQueue, dt, done);
+    for (const s of this.structures.list) {
+      if (!s.queue.length) continue;
+      if (Math.hypot(s.x - this.player.position.x, s.z - this.player.position.z) <= CONFIG.crafting.workRange) tickQueue(s.queue, dt, done);
+    }
+  }
+
+  private craftStatuses(): CraftStatus[] {
+    const out: CraftStatus[] = [];
+    const hp = queueProgress(this.handQueue);
+    if (hp) out.push({ label: 'Crafting', item: ITEMS[hp.recipe.output.item].name, remaining: hp.remaining, frac: hp.frac });
+    for (const s of this.structures.list) {
+      const p = queueProgress(s.queue);
+      if (!p) continue;
+      const far = Math.hypot(s.x - this.player.position.x, s.z - this.player.position.z) > CONFIG.crafting.workRange;
+      out.push({ label: 'Table', item: ITEMS[p.recipe.output.item].name, remaining: p.remaining, frac: p.frac, paused: far ? 'Paused: too far' : undefined });
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------- blueprints & placing
+
+  private toggleTrack(id: BlueprintId): void {
+    if (!this.book.toggleTrack(id)) {
+      this.hud.toastInfo('Tracking full', `You can track up to ${CONFIG.blueprints.maxTracked} blueprints. Untrack one first.`, '#d0583c', 3);
+    }
+    this.sfx.click();
+    this.bpMenu.refresh();
+  }
+
+  /** G: place the first tracked blueprint that has all its components. */
+  private startBlueprintPlacement(): void {
+    const id = this.book.tracked.find((t) => this.book.checklist(this.inventory, t).ready);
+    if (!id) {
+      this.hud.toastInfo(
+        'Nothing ready to build',
+        this.book.tracked.length ? 'Your tracked blueprints still need components.' : 'Press B and TRACK a blueprint first.',
+        '#b8b0a0',
+        3,
+      );
+      return;
+    }
+    const bp = blueprintById(id)!;
+    this.beginPlacement(id, bp.name, () => {
+      if (!this.book.checklist(this.inventory, id).ready) {
+        this.hud.toastInfo('Missing components', `You no longer have everything for the ${bp.name}.`, '#d0583c', 3);
+        return false;
+      }
+      for (const c of bp.components) this.inventory.remove(c.item, c.count);
+      if (this.book.isTracked(id)) this.book.toggleTrack(id);
+      return true;
+    });
+  }
+
+  private beginPlacement(type: StructureId, label: string, consume: () => boolean): void {
+    this.clearMining();
+    this.placer.start(
+      {
+        type,
+        label,
+        onPlace: (x, y, z, rot) => {
+          if (!consume()) return;
+          this.structures.add(type, x, y, z, rot);
+          this.stats.structuresBuilt++;
+          this.sfx.place();
+          this.player.shake(0.12);
+          this.particles.dust(new THREE.Vector3(x, y + 0.1, z), 10, Math.max(STRUCTURES[type].size.w, STRUCTURES[type].size.d) * 0.6, 0.7);
+          this.hud.toastInfo(`Built: ${label}`, type === 'crafting_table' ? 'Walk up to it and press E to craft components.' : 'Placed.', '#9cc070', 3);
+          this.saveGame();
+        },
+      },
+      this.player.yaw + Math.PI,
+    );
+  }
+
+  private updatePlacement(): void {
+    const req = this.placer.request!;
+    this.placer.update(this.camera, { x: this.player.position.x, z: this.player.position.z, r: CONFIG.player.radius });
+    this.hud.setPrompt(
+      `Placing <b>${req.label}</b> · <kbd>LMB</kbd> place · <kbd>R</kbd> rotate · <kbd>RMB</kbd> cancel` +
+        (this.placer.valid ? '' : `<br><span class="bad">${this.placer.reason || "Can't place here"}</span>`),
+    );
+    if (this.input.leftPressed) {
+      if (!this.placer.confirm()) this.sfx.dud();
+    } else if (this.input.rightPressed) {
+      this.placer.cancel();
+    }
+    const wheel = this.input.consumeWheel();
+    if (wheel !== 0) this.placer.rotate(wheel);
   }
 
   private selectSlot(i: number): void {
@@ -333,7 +577,7 @@ export class Game {
   private frame(time: number): void {
     this.timer.update(time);
     const dt = Math.min(this.timer.getDelta(), 0.05);
-    const active = this.state === 'playing' || this.state === 'inventory';
+    const active = this.state === 'playing' || isOverlay(this.state);
     if (active) this.update(dt);
     windUniforms.uTime.value += dt;
     this.sky.setTimeOfDay(this.clock.skyTime);
@@ -354,11 +598,14 @@ export class Game {
       this.lookDX = dx;
       this.lookDY = dy;
       this.player.look(dx, dy);
-      const wheel = this.input.consumeWheel();
-      if (wheel !== 0) this.selectSlot(this.inventory.selected + wheel);
+      if (!this.placer.active) {
+        const wheel = this.input.consumeWheel();
+        if (wheel !== 0) this.selectSlot(this.inventory.selected + wheel);
+      }
     }
 
     this.clock.advance(dt);
+    this.tickCrafting(dt);
     this.player.allowSprint = this.survival.canSprint;
     this.player.allowJump = this.survival.canJump;
     this.player.update(dt, playing ? this.input : null, this.physics);
@@ -366,8 +613,14 @@ export class Game {
     this.applyFallDamage();
     if (this.player.position.y < CONFIG.player.voidY) this.respawn();
 
-    if (playing) this.updateInteraction(dt);
-    else this.clearMining();
+    if (playing && this.placer.active) {
+      this.clearMining();
+      this.target = null;
+      this.updatePlacement();
+    } else if (playing) {
+      this.updateInteraction(dt);
+      this.hud.setPrompt(this.nearbyTable() ? '<kbd>E</kbd> Use crafting table' : null);
+    } else this.clearMining();
 
     const moved = Math.hypot(this.player.velocity.x, this.player.velocity.z) > 0.5;
     this.survival.update(dt, {
@@ -388,7 +641,16 @@ export class Game {
     );
     if (this.state === 'dead') return;
     this.survivalHud.update(this.clock, this.survival);
+    this.tracker.update(this.book, this.inventory, this.craftStatuses());
+    this.updateTorch(dt);
     this.eatCooldown -= dt;
+    this.menuRefreshTimer -= dt;
+    if (this.craftMenu.isOpen && this.menuRefreshTimer <= 0) {
+      this.menuRefreshTimer = 0.1;
+      const far = this.openTable && Math.hypot(this.openTable.x - this.player.position.x, this.openTable.z - this.player.position.z) > CONFIG.crafting.workRange;
+      this.craftMenu.setPausedNote(far ? 'Paused: too far from the table' : '');
+      this.craftMenu.renderQueue();
+    }
 
     const moving = this.player.onGround ? Math.min(1, Math.hypot(this.player.velocity.x, this.player.velocity.z) / 4) : 0;
     this.hand.update(dt, moving, this.lookDX, this.lookDY);
@@ -415,7 +677,9 @@ export class Game {
     const t = this.target;
 
     if (t && this.input.leftDown) {
-      this.mineProgress += dt / CONFIG.mining.magicBlockTime;
+      const held = this.inventory.selectedStack;
+      const speed = (held && ITEMS[held.item].miningSpeed) || 1;
+      this.mineProgress += (dt * speed) / CONFIG.mining.magicBlockTime;
       this.hitTimer -= dt;
       this.hand.setMining(true);
       if (this.hitTimer <= 0) {
@@ -435,9 +699,15 @@ export class Game {
     if (this.input.rightPressed || (this.input.rightDown && this.eatCooldown <= 0)) this.useHeldItem();
   }
 
-  /** Right-click: eat held food. */
+  /** Right-click: place a held placeable, or eat held food. */
   private useHeldItem(): void {
     const stack = this.inventory.selectedStack;
+    const places = stack ? ITEMS[stack.item].places : undefined;
+    if (stack && places && this.input.rightPressed) {
+      const item = stack.item;
+      this.beginPlacement(places, STRUCTURES[places].name, () => this.inventory.remove(item, 1) === 1);
+      return;
+    }
     const food = stack ? ITEMS[stack.item].food : undefined;
     if (stack && food) {
       if (this.eatCooldown > 0) return;
@@ -455,7 +725,7 @@ export class Game {
     }
     if (this.input.rightPressed && this.buildNoticeTimer <= 0) {
       this.buildNoticeTimer = 4;
-      this.hud.toastInfo('Building is being rebuilt', 'Foundations, walls and roofs arrive in a later update.', '#b8b0a0', 3);
+      this.hud.toastInfo('Nothing to use', 'Hold food to eat it. Press C to craft, B for blueprints.', '#b8b0a0', 3);
     }
   }
 
@@ -505,6 +775,21 @@ export class Game {
       for (const i of result.items) this.give(i.item, i.count);
       this.hud.toastItems(result.rarity, result.items, result.label);
       this.sfx.drop(result.rarity);
+    } else if (result.event === 'blueprint') {
+      const bp = this.book.randomMonolithBlueprint();
+      if (bp) {
+        this.book.unlock(bp.id, 'Found in the Monolith');
+        this.sfx.drop('rare');
+      } else {
+        // Every Monolith blueprint is known: salvage the plan's materials instead.
+        const items = [
+          { item: 'log' as ItemId, count: 4 },
+          { item: 'iron_ore' as ItemId, count: 2 },
+        ];
+        for (const i of items) this.give(i.item, i.count);
+        this.hud.toastItems('rare', items, 'Torn Blueprint');
+        this.sfx.drop('rare');
+      }
     } else {
       this.applyEvent(result.event, result.rarity);
     }
@@ -521,6 +806,25 @@ export class Game {
   private give(item: ItemId, count: number): void {
     const left = this.inventory.add(item, count);
     if (left > 0) this.hud.toastInfo('Inventory full', `${left} ${ITEMS[item].name} fell into the void.`, '#d0583c', 3);
+  }
+
+  /** A held torch lights the area and slowly burns away. */
+  private updateTorch(dt: number): void {
+    const held = this.inventory.selectedStack;
+    const burn = held && ITEMS[held.item].burnSeconds;
+    if (!held || !burn) {
+      this.torchLight.intensity = 0;
+      return;
+    }
+    const t = performance.now() * 0.001;
+    const flicker = 0.85 + Math.sin(t * 13) * 0.06 + Math.sin(t * 29 + 1.3) * 0.05 + Math.random() * 0.06;
+    this.torchLight.intensity = 9 * flicker;
+    this.torchBurn += dt;
+    if (this.torchBurn >= burn) {
+      this.torchBurn = 0;
+      this.inventory.takeFromSlot(this.inventory.selected, 1);
+      this.hud.toastInfo('Torch burned out', this.inventory.count('torch') ? 'You light another one.' : 'Craft another (C).', '#e0a050', 3);
+    }
   }
 
   private applyEvent(event: Parameters<typeof runLootEvent>[0], rarity: Rarity): void {
@@ -598,6 +902,10 @@ export class Game {
       else if (this.survival.hunger < 40 && this.inventory.slots.some((st) => st && ITEMS[st.item].food))
         hint = "You're hungry: select food (1-9) and RIGHT CLICK to eat";
       else if (this.monolith.totalBreaks < 6) hint = 'Keep breaking it. Careful near the edge: hold OPTION or Z to crouch';
+      else if (this.inventory.selectedStack?.item === 'crafting_table') hint = 'RIGHT CLICK to place the Crafting Table';
+      else if (this.inventory.count('crafting_table') > 0) hint = 'Select the Crafting Table in your hotbar and RIGHT CLICK to place it';
+      else if (!this.structures.list.some((st) => st.type === 'crafting_table') && this.monolith.totalBreaks < 60)
+        hint = 'Press C to craft. A Crafting Table needs 10 wood + 5 stone';
     }
     this.hud.setHint(hint);
   }
@@ -615,7 +923,7 @@ export class Game {
   private snapshot(): SaveData {
     const p = this.player;
     return {
-      version: 3,
+      version: 4,
       savedAt: Date.now(),
       playSeconds: this.playSeconds,
       clock: { day: this.clock.day, seconds: this.clock.seconds },
@@ -625,6 +933,9 @@ export class Game {
       inventory: this.inventory.serialize(),
       magic: { breaks: this.monolith.totalBreaks, starterIndex: this.starterIndex },
       legacyBlocks: this.legacyBlocks,
+      blueprints: this.book.serialize(),
+      structures: this.structures.serialize(),
+      handQueue: this.handQueue,
     };
   }
 
@@ -648,6 +959,15 @@ export class Game {
     this.sky.setTimeOfDay(this.clock.skyTime);
     this.survival.load(data.survival);
     this.stats = { ...data.stats };
+    this.handQueue = sanitizeQueue(data.handQueue);
+    this.structures.clear();
+    for (const st of data.structures ?? []) {
+      if (STRUCTURES[st.type]) this.structures.add(st.type, st.x, st.y, st.z, st.rot, sanitizeQueue(st.queue));
+    }
+    this.quietUnlocks = true;
+    this.book.load(data.blueprints);
+    this.book.applyDayUnlocks(this.clock.day);
+    this.quietUnlocks = false;
 
     const p = data.player;
     const ground = this.physics.groundHeight(p.x, p.z, CONFIG.player.radius, p.y + 1);
@@ -660,7 +980,13 @@ export class Game {
       this.player.update(0, null, this.physics);
     }
 
-    if (data.migratedFrom === 2) {
+    if (data.migratedFrom === 3) {
+      this.pendingNotice = {
+        title: 'Crafting has arrived',
+        detail: 'Pebbles are now Stone. Press C to craft a Crafting Table (10 wood + 5 stone), and B to see your blueprints.',
+      };
+      this.saveGame();
+    } else if (data.migratedFrom === 2) {
       this.pendingNotice = {
         title: 'Survival has begun',
         detail: 'Your run continues from Day 1 with full health. Watch your food and survive as many days as you can.',
@@ -694,6 +1020,17 @@ export class Game {
     this.nightEvents.sync(false);
     this.sky.setTimeOfDay(this.clock.skyTime);
     this.survival.reset();
+    this.handQueue = [];
+    this.structures.clear();
+    this.placer.cancel();
+    this.quietUnlocks = true;
+    this.book.load(undefined);
+    this.book.applyDayUnlocks(1);
+    this.quietUnlocks = false;
+    this.pendingNotice = {
+      title: 'Blueprints: Fire Pit, Chicken Coop',
+      detail: 'You start with two blueprints. Press B to see them, C to craft, and get a Crafting Table going for components.',
+    };
     this.placeAtSpawn();
     this.hud.updatePhase(this.monolith);
     this.saveGame();

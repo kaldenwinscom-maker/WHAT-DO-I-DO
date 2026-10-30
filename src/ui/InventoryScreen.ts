@@ -2,6 +2,7 @@
 // shift-click to move a stack between the hotbar and the main inventory.
 
 import { ITEMS } from '../data/items';
+import { usedIn } from '../crafting/Crafting';
 import { HOTBAR_SIZE, TOTAL_SLOTS, type Inventory, type Stack } from '../inventory/Inventory';
 import { itemIconUrl } from './icons';
 import { renderSlot } from './Hud';
@@ -154,7 +155,15 @@ export class InventoryScreen {
     const s = this.inv.slots[i];
     if (!s) return;
     const d = ITEMS[s.item];
-    this.info.innerHTML = `<b>${d.name}</b>${d.perishable ? ' · perishable' : ''}<br>${d.description}`;
+    const tags: string[] = [];
+    if (d.food) tags.push(`food +${d.food.hunger}${d.food.sickChance ? ', risky raw' : ''}`);
+    if (d.miningSpeed) tags.push(`tool, mines ${Math.round((d.miningSpeed - 1) * 100)}% faster`);
+    if (d.places) tags.push('placeable');
+    if (d.perishable) tags.push('perishable');
+    const uses = usedIn(s.item);
+    this.info.innerHTML =
+      `<b>${d.name}</b>${tags.length ? ' · ' + tags.join(' · ') : ''}<br>${d.description}` +
+      (uses.length ? `<br><span class="uses">Used in: ${uses.join(', ')}</span>` : '');
   }
 
   private renderCursor(): void {

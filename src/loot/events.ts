@@ -25,7 +25,8 @@ export interface EventOutcome {
   sound: 'boom' | 'rot' | 'crumble' | 'dud';
 }
 
-export function runLootEvent(event: LootEventId, ctx: EventContext): EventOutcome {
+/** Bad / neutral events. ('blueprint' is a good find and is handled by the game directly.) */
+export function runLootEvent(event: Exclude<LootEventId, 'blueprint'>, ctx: EventContext): EventOutcome {
   switch (event) {
     case 'burst':
       return burst(ctx);

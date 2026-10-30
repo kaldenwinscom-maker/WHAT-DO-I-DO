@@ -5,9 +5,26 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { ITEMS, type ItemId } from '../data/items';
 import { makeItemModel } from '../items/itemModels';
+import { STRUCTURES, type StructureId } from '../data/structures';
+import { makeStructureModel } from '../build/structureModels';
 
 const SIZE = 128;
 const urls = new Map<ItemId, string>();
+const structureUrls = new Map<StructureId, string>();
+
+/** Wrap a model so it's centred and fits a unit sphere. */
+function normalized(model: THREE.Object3D): THREE.Object3D {
+  const box = new THREE.Box3().setFromObject(model);
+  const c = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3()).length();
+  model.position.sub(c);
+  const wrap = new THREE.Group();
+  wrap.add(model);
+  wrap.scale.setScalar(1 / size);
+  const outer = new THREE.Group();
+  outer.add(wrap);
+  return outer;
+}
 
 /** Render every item icon. Call once after assets have loaded. */
 export function prepareIcons(): void {
@@ -41,6 +58,14 @@ export function prepareIcons(): void {
     urls.set(id, renderer.domElement.toDataURL('image/png'));
     scene.remove(model);
   }
+  for (const id of Object.keys(STRUCTURES) as StructureId[]) {
+    const model = normalized(makeStructureModel(id));
+    model.rotation.y = -0.5;
+    scene.add(model);
+    renderer.render(scene, camera);
+    structureUrls.set(id, renderer.domElement.toDataURL('image/png'));
+    scene.remove(model);
+  }
   pmrem.dispose();
   renderer.dispose();
   renderer.forceContextLoss();
@@ -48,4 +73,8 @@ export function prepareIcons(): void {
 
 export function itemIconUrl(id: ItemId): string {
   return urls.get(id) ?? '';
+}
+
+export function structureIconUrl(id: StructureId): string {
+  return structureUrls.get(id) ?? '';
 }

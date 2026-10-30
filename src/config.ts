@@ -62,6 +62,27 @@ export const CONFIG = {
     /** Food poisoning from raw food. */
     sickness: { durationSeconds: 75, damagePerMinute: 7, hungerDrainMultiplier: 1.5 },
   },
+  crafting: {
+    /** How close (metres) you must be to a crafting table to open it with E. */
+    useRange: 2.6,
+    /** Table crafting keeps running while you stay within this distance (metres). */
+    workRange: 7,
+  },
+  blueprints: {
+    /** Day each blueprint unlocks automatically at sunrise (1 = from the start). Omit = never by day. */
+    dayUnlocks: {
+      fire_pit: 1,
+      chicken_coop: 1,
+      animal_feeder: 3,
+      storage_chest: 4,
+      door: 5,
+      rain_collector: 6,
+      bed: 8,
+      cooking_station: 10,
+    } as Record<string, number>,
+    /** How many blueprints can be tracked on screen at once. */
+    maxTracked: 3,
+  },
   save: {
     key: 'lastblock.save.v1',
     recordsKey: 'lastblock.records',

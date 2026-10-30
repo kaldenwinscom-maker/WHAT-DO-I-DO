@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 
-export const TEXTURE_SETS = ['rock_face', 'mossy_rock', 'forrest_ground_01', 'bark_brown_02', 'dark_rock_02', 'snow_02'] as const;
+export const TEXTURE_SETS = ['rock_face', 'mossy_rock', 'forrest_ground_01', 'bark_brown_02', 'dark_rock_02', 'snow_02', 'brown_planks_04'] as const;
 export type TextureSetId = (typeof TEXTURE_SETS)[number];
 
 /** A PBR texture set: albedo (sRGB), OpenGL normal map, and packed AO/Roughness/Metal. */

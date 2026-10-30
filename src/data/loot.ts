@@ -39,7 +39,9 @@ export type LootEventId =
   /** A few pieces at the edge of the base break away into the void. */
   | 'crumble'
   /** Nothing at all. */
-  | 'dud';
+  | 'dud'
+  /** A good one: unlocks a random locked blueprint that can come from the Monolith. */
+  | 'blueprint';
 
 export type LootEntry =
   | { kind: 'item'; item: ItemId; min: number; max: number; weight: number }
@@ -51,7 +53,7 @@ export type LootTable = Partial<Record<Rarity, LootEntry[]>>;
 export const LOOT_TABLES: Partial<Record<PhaseId, LootTable>> = {
   meadow: {
     junk: [
-      { kind: 'item', item: 'pebble', min: 1, max: 2, weight: 30 },
+      { kind: 'item', item: 'stone', min: 1, max: 2, weight: 30 },
       { kind: 'item', item: 'dry_leaves', min: 1, max: 3, weight: 25 },
       { kind: 'event', event: 'dud', weight: 10 },
       { kind: 'event', event: 'burst', weight: 18 },
@@ -59,34 +61,40 @@ export const LOOT_TABLES: Partial<Record<PhaseId, LootTable>> = {
       { kind: 'event', event: 'crumble', weight: 7 },
     ],
     common: [
-      { kind: 'item', item: 'dirt', min: 1, max: 3, weight: 40 },
-      { kind: 'item', item: 'stick', min: 1, max: 2, weight: 25 },
-      { kind: 'item', item: 'seeds', min: 1, max: 2, weight: 15 },
-      { kind: 'item', item: 'berries', min: 2, max: 4, weight: 25 },
-      { kind: 'item', item: 'mud_clump', min: 1, max: 2, weight: 10 },
+      { kind: 'item', item: 'log', min: 1, max: 2, weight: 20 },
+      { kind: 'item', item: 'stone', min: 2, max: 3, weight: 20 },
+      { kind: 'item', item: 'fiber', min: 2, max: 4, weight: 20 },
+      { kind: 'item', item: 'berries', min: 2, max: 4, weight: 20 },
+      { kind: 'item', item: 'dirt', min: 1, max: 3, weight: 10 },
+      { kind: 'item', item: 'seeds', min: 1, max: 2, weight: 6 },
+      { kind: 'item', item: 'mud_clump', min: 1, max: 2, weight: 4 },
     ],
     uncommon: [
-      { kind: 'item', item: 'turf', min: 1, max: 2, weight: 35 },
-      { kind: 'item', item: 'log', min: 1, max: 1, weight: 30 },
-      { kind: 'item', item: 'egg', min: 1, max: 1, weight: 15 },
+      { kind: 'item', item: 'log', min: 2, max: 3, weight: 22 },
+      { kind: 'item', item: 'iron_ore', min: 1, max: 2, weight: 18 },
+      { kind: 'item', item: 'fiber', min: 4, max: 6, weight: 14 },
+      { kind: 'item', item: 'flint', min: 1, max: 1, weight: 12 },
+      { kind: 'item', item: 'egg', min: 1, max: 1, weight: 12 },
+      { kind: 'item', item: 'turf', min: 1, max: 2, weight: 12 },
       { kind: 'item', item: 'feather', min: 1, max: 3, weight: 10 },
-      { kind: 'item', item: 'flint', min: 1, max: 1, weight: 10 },
     ],
     rare: [
-      { kind: 'item', item: 'log', min: 2, max: 4, weight: 40 },
-      { kind: 'item', item: 'dirt', min: 6, max: 10, weight: 35 },
-      { kind: 'item', item: 'turf', min: 4, max: 6, weight: 25 },
+      { kind: 'event', event: 'blueprint', weight: 20 },
+      { kind: 'item', item: 'log', min: 4, max: 6, weight: 25 },
+      { kind: 'item', item: 'iron_ore', min: 2, max: 4, weight: 20 },
+      { kind: 'item', item: 'stone', min: 6, max: 10, weight: 20 },
+      { kind: 'item', item: 'turf', min: 4, max: 6, weight: 15 },
     ],
     epic: [
       {
         kind: 'bundle',
         label: 'Meadow Cache',
         items: [
-          { item: 'dirt', min: 8, max: 12 },
-          { item: 'log', min: 3, max: 5 },
-          { item: 'seeds', min: 3, max: 5 },
+          { item: 'log', min: 6, max: 10 },
+          { item: 'stone', min: 6, max: 10 },
+          { item: 'fiber', min: 6, max: 10 },
+          { item: 'iron_ore', min: 2, max: 4 },
           { item: 'berries', min: 4, max: 8 },
-          { item: 'flint', min: 1, max: 2 },
         ],
         weight: 1,
       },
@@ -95,14 +103,15 @@ export const LOOT_TABLES: Partial<Record<PhaseId, LootTable>> = {
 };
 
 /**
- * The first few breaks of a fresh world always give these, so a new player can
- * start building right away. Set to [] to disable.
+ * The first few breaks of a fresh run always give these, so a new player can
+ * get going right away. Set to [] to disable.
  */
 export const STARTER_DROPS: { item: ItemId; count: number }[] = [
-  { item: 'dirt', count: 2 },
-  { item: 'dirt', count: 2 },
+  { item: 'log', count: 2 },
   { item: 'berries', count: 4 },
-  { item: 'log', count: 1 },
+  { item: 'stone', count: 2 },
+  { item: 'fiber', count: 3 },
+  { item: 'log', count: 2 },
 ];
 
 /** Tunables for loot events. */

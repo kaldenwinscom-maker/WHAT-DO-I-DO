@@ -7,6 +7,7 @@ import { Assets } from '../render/Assets';
 import { makeTriplanarMaterial } from '../render/triplanar';
 import { makeRockGeometry } from '../world/rocks';
 import { rng } from '../world/noise';
+import { makeStructureModel } from '../build/structureModels';
 
 const matCache = new Map<string, THREE.Material>();
 function cached<T extends THREE.Material>(key: string, make: () => T): T {
@@ -21,7 +22,7 @@ function cached<T extends THREE.Material>(key: string, make: () => T): T {
 const plain = (color: THREE.ColorRepresentation, roughness = 0.9, extra: THREE.MeshStandardMaterialParameters = {}) =>
   cached(`plain:${color}:${roughness}:${JSON.stringify(extra)}`, () => new THREE.MeshStandardMaterial({ color, roughness, metalness: 0, ...extra }));
 
-const stoneMat = (set: 'rock_face' | 'dark_rock_02' | 'forrest_ground_01', tint: string, scale = 2.5) =>
+const stoneMat = (set: 'rock_face' | 'dark_rock_02' | 'forrest_ground_01' | 'brown_planks_04', tint: string, scale = 2.5) =>
   cached(`tri:${set}:${tint}:${scale}`, () => makeTriplanarMaterial({ base: { set, scale, tint }, objectSpace: true }));
 
 function barkMat(): THREE.MeshStandardMaterial {
@@ -211,7 +212,179 @@ const BUILDERS: Record<ItemId, () => THREE.Object3D> = {
     g.add(leaf);
     return g;
   },
-  pebble: () => rockMesh(31, stoneMat('rock_face', '#a09a90', 3), { x: 0.5, y: 0.33, z: 0.42 }, 5, 0.2),
+  stone: () => {
+    const g = new THREE.Group();
+    g.add(rockMesh(31, stoneMat('rock_face', '#a09a90', 3), { x: 0.5, y: 0.36, z: 0.42 }, 7, 0.2));
+    const small = rockMesh(32, stoneMat('rock_face', '#8f8a82', 3), { x: 0.28, y: 0.2, z: 0.24 }, 6, 0.2);
+    small.position.set(0.42, -0.12, 0.25);
+    g.add(small);
+    return g;
+  },
+  fiber: () => {
+    // A loose bundle of long pale-green plant strands, tied in the middle.
+    const g = new THREE.Group();
+    const r = rng(71);
+    for (let i = 0; i < 16; i++) {
+      const pts = [];
+      const ox = (r() - 0.5) * 0.12;
+      const oz = (r() - 0.5) * 0.12;
+      for (let k = 0; k <= 4; k++) {
+        const t = k / 4 - 0.5;
+        pts.push(new THREE.Vector3(t * 1.0, ox + Math.sin(t * 3 + i) * 0.03 + t * t * (r() - 0.5) * 0.4, oz + (r() - 0.5) * 0.02));
+      }
+      g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 10, 0.012, 4), plain(['#8c9a5c', '#a0a468', '#7a8650'][i % 3], 0.9)));
+    }
+    const tie = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.022, 6, 12), plain('#6a5a3a', 1));
+    tie.rotation.y = Math.PI / 2;
+    g.add(tie);
+    return g;
+  },
+  iron_ore: () => {
+    const g = new THREE.Group();
+    g.add(rockMesh(33, stoneMat('dark_rock_02', '#6a5e56', 3), { x: 0.5, y: 0.38, z: 0.42 }, 9, 0.22));
+    const r = rng(34);
+    for (let i = 0; i < 7; i++) {
+      const fleck = rockMesh(35 + i, plain('#9a5a34', 0.6, { metalness: 0.4 }), { x: 0.1, y: 0.06, z: 0.08 }, 3, 0.3);
+      const a = r() * Math.PI * 2;
+      const b = (r() - 0.3) * 1.4;
+      fleck.position.set(Math.cos(a) * Math.cos(b) * 0.46, Math.sin(b) * 0.3, Math.sin(a) * Math.cos(b) * 0.38);
+      g.add(fleck);
+    }
+    return g;
+  },
+  rope: () => {
+    // A coiled rope.
+    const pts: THREE.Vector3[] = [];
+    for (let i = 0; i <= 120; i++) {
+      const t = i / 120;
+      const a = t * Math.PI * 2 * 3.2;
+      const rad = 0.42 - t * 0.12;
+      pts.push(new THREE.Vector3(Math.cos(a) * rad, t * 0.1 + Math.sin(a * 0.5) * 0.02, Math.sin(a) * rad));
+    }
+    pts.push(new THREE.Vector3(0.1, 0.12, 0.45), new THREE.Vector3(0.2, 0.06, 0.7));
+    return new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 260, 0.045, 6), plain('#8c7650', 1));
+  },
+  cloth: () => {
+    // A folded square of coarse cloth.
+    const g = new THREE.Group();
+    for (let i = 0; i < 3; i++) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(0.9 - i * 0.04, 0.05, 0.6 - i * 0.03, 6, 1, 4), plain(['#8a7b62', '#7d6f58', '#958670'][i], 1));
+      m.position.y = i * 0.055;
+      m.rotation.y = (i - 1) * 0.06;
+      g.add(m);
+    }
+    const fold = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.6, 10, 1, true, 0, Math.PI), plain('#8a7b62', 1, { side: THREE.DoubleSide }));
+    fold.rotation.set(Math.PI / 2, 0, Math.PI / 2);
+    fold.position.set(0.43, 0.08, 0);
+    g.add(fold);
+    return g;
+  },
+  stone_brick: () => {
+    const g = new THREE.Group();
+    const b = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.4, 0.45), stoneMat('rock_face', '#a6a196', 2.2));
+    g.add(b);
+    const b2 = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.4, 0.45), stoneMat('rock_face', '#9a958b', 2.2));
+    b2.position.set(0.12, 0.42, 0.04);
+    b2.rotation.y = 0.12;
+    g.add(b2);
+    return g;
+  },
+  nails: () => {
+    const g = new THREE.Group();
+    const r = rng(81);
+    for (let i = 0; i < 7; i++) {
+      const n = new THREE.Group();
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.012, 0.75, 6), plain('#5a4c40', 0.6, { metalness: 0.6 }));
+      const head = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.03, 8), plain('#4a4440', 0.5, { metalness: 0.7 }));
+      head.position.y = 0.38;
+      n.add(shaft, head);
+      n.position.set((r() - 0.5) * 0.5, (r() - 0.5) * 0.1, (r() - 0.5) * 0.4);
+      n.rotation.set(Math.PI / 2 + (r() - 0.5) * 0.4, 0, r() * Math.PI * 2);
+      g.add(n);
+    }
+    return g;
+  },
+  hinge: () => {
+    const g = new THREE.Group();
+    const iron = plain('#4c4946', 0.5, { metalness: 0.75 });
+    const leaf1 = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.03, 0.5), iron);
+    leaf1.position.x = -0.24;
+    const leaf2 = leaf1.clone();
+    leaf2.position.x = 0.24;
+    leaf2.rotation.z = -0.35;
+    const knuckle = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.52, 10), iron);
+    knuckle.rotation.x = Math.PI / 2;
+    g.add(leaf1, leaf2, knuckle);
+    for (const x of [-0.34, -0.14, 0.14, 0.34])
+      for (const z of [-0.14, 0.14]) {
+        const h = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.04, 6), plain('#2a2826', 1));
+        h.position.set(x, x > 0 ? 0.03 - (x - 0.0) * 0.36 : 0.01, z);
+        g.add(h);
+      }
+    return g;
+  },
+  wood_frame: () => {
+    const g = new THREE.Group();
+    const m = stoneMat('brown_planks_04', '#b0a08a', 2);
+    const bar = (w: number, h: number, x: number, y: number, rz = 0) => {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.08), m);
+      b.position.set(x, y, 0);
+      b.rotation.z = rz;
+      g.add(b);
+    };
+    bar(1, 0.1, 0, 0.45);
+    bar(1, 0.1, 0, -0.45);
+    bar(0.1, 1, -0.45, 0);
+    bar(0.1, 1, 0.45, 0);
+    bar(1.25, 0.08, 0, 0, Math.PI / 4);
+    g.rotation.x = -0.4;
+    return g;
+  },
+  beam: () => {
+    const g = new THREE.Group();
+    const b = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.18, 0.18), stoneMat('brown_planks_04', '#9a8a74', 2));
+    g.add(b);
+    for (const x of [-0.35, 0.35]) {
+      const wrap = new THREE.Mesh(new THREE.TorusGeometry(0.135, 0.025, 6, 12), plain('#8c7650', 1));
+      wrap.rotation.y = Math.PI / 2;
+      wrap.position.x = x;
+      g.add(wrap);
+    }
+    return g;
+  },
+  rock: () => rockMesh(91, stoneMat('rock_face', '#9a958c', 3), { x: 0.5, y: 0.4, z: 0.42 }, 10, 0.18),
+  stone_hatchet: () => {
+    const g = new THREE.Group();
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 1.0, 8), barkMat());
+    handle.rotation.z = 0.25;
+    g.add(handle);
+    const head = rockMesh(92, stoneMat('dark_rock_02', '#6a6a70', 3), { x: 0.3, y: 0.12, z: 0.1 }, 10, 0.1);
+    head.position.set(0.18, 0.38, 0);
+    head.rotation.z = 0.25;
+    g.add(head);
+    const lash = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.018, 6, 10), plain('#8c7650', 1));
+    lash.position.set(-0.1, 0.4, 0);
+    lash.rotation.set(Math.PI / 2, 0.25, 0);
+    g.add(lash);
+    return g;
+  },
+  torch: () => {
+    const g = new THREE.Group();
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.03, 0.9, 8), barkMat());
+    g.add(handle);
+    const wrap = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.06, 0.22, 10), plain('#5a4630', 1));
+    wrap.position.y = 0.42;
+    g.add(wrap);
+    const flame = new THREE.Mesh(
+      new THREE.ConeGeometry(0.09, 0.32, 10),
+      new THREE.MeshStandardMaterial({ color: '#ffb050', emissive: '#ff7a20', emissiveIntensity: 3, transparent: true, opacity: 0.9 }),
+    );
+    flame.position.y = 0.66;
+    flame.name = 'flame';
+    g.add(flame);
+    return g;
+  },
+  crafting_table: () => makeStructureModel('crafting_table'),
   dry_leaves: () => {
     const g = new THREE.Group();
     const cols = ['#8a6a3c', '#7a5a34', '#9a7a44'];
