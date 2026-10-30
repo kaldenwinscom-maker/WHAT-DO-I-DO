@@ -1,7 +1,8 @@
 # Last Block
 
 A browser-based 3D survival game. You start on a tiny floating island with a single glowing
-rock, the Monolith. Break it for random drops (some good, many bad), build outward, and survive.
+rock, the Monolith. Break it for random drops (some good, many bad), build outward, and
+**survive as many days as you can**. Death is permanent: your best run is kept on the main menu.
 
 Built with Vite + TypeScript + Three.js, with PBR materials, an HDRI sky and post-processing
 (`postprocessing` + N8AO). Runs entirely in the browser; progress saves to localStorage.
@@ -30,6 +31,7 @@ Then open the URL it prints (usually http://localhost:5173) in Chrome, Safari or
 | Shift | Sprint |
 | Option / Z | Crouch (you won't walk off edges) |
 | Left click (hold) | Mine the Monolith |
+| Right click (or Ctrl + click) | Eat the held food |
 | 1–9 / scroll | Select hotbar slot |
 | E | Inventory |
 | Esc | Pause |
@@ -55,7 +57,13 @@ All game content lives in `src/data/`:
 - `loot.ts`: rarity weights, loot tables per phase, starter drops, bad-event strength
 - `items.ts`: every item (name, stack size, perishable); their 3D models are in `src/items/itemModels.ts`
 - `phases.ts`: phase names, break thresholds, and each phase's Monolith look (textures, tint, vein colour)
-- `src/config.ts`: player physics, reach, respawn item loss, day length, autosave interval, fog
+- `src/config.ts`:
+  - `time`: day and night length in real minutes (default 7 + 7)
+  - `survival`: hunger drain, night cold, health regen, starving, stamina costs, fall/void damage, food poisoning
+  - player physics, reach, void item loss, autosave interval, fog
+
+Food values (hunger restored, chance of food poisoning) are on each item in `items.ts`.
+Night events (enemies, storms…) plug into `src/world/nightEvents.ts`; none are active yet.
 
 ## Project layout
 

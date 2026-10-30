@@ -61,8 +61,9 @@ export const LOOT_TABLES: Partial<Record<PhaseId, LootTable>> = {
     common: [
       { kind: 'item', item: 'dirt', min: 1, max: 3, weight: 40 },
       { kind: 'item', item: 'stick', min: 1, max: 2, weight: 25 },
-      { kind: 'item', item: 'seeds', min: 1, max: 2, weight: 20 },
-      { kind: 'item', item: 'mud_clump', min: 1, max: 2, weight: 15 },
+      { kind: 'item', item: 'seeds', min: 1, max: 2, weight: 15 },
+      { kind: 'item', item: 'berries', min: 2, max: 4, weight: 25 },
+      { kind: 'item', item: 'mud_clump', min: 1, max: 2, weight: 10 },
     ],
     uncommon: [
       { kind: 'item', item: 'turf', min: 1, max: 2, weight: 35 },
@@ -84,6 +85,7 @@ export const LOOT_TABLES: Partial<Record<PhaseId, LootTable>> = {
           { item: 'dirt', min: 8, max: 12 },
           { item: 'log', min: 3, max: 5 },
           { item: 'seeds', min: 3, max: 5 },
+          { item: 'berries', min: 4, max: 8 },
           { item: 'flint', min: 1, max: 2 },
         ],
         weight: 1,
@@ -99,8 +101,8 @@ export const LOOT_TABLES: Partial<Record<PhaseId, LootTable>> = {
 export const STARTER_DROPS: { item: ItemId; count: number }[] = [
   { item: 'dirt', count: 2 },
   { item: 'dirt', count: 2 },
+  { item: 'berries', count: 4 },
   { item: 'log', count: 1 },
-  { item: 'dirt', count: 3 },
 ];
 
 /** Tunables for loot events. */

@@ -20,6 +20,13 @@ export class Player {
   crouching = false;
   sprinting = false;
   mouseSensitivity: number = P.mouseSensitivity;
+  /** Set by the survival system: out of stamina means no sprinting or jumping. */
+  allowSprint = true;
+  allowJump = true;
+  /** True on the frame a jump started. */
+  jumped = false;
+  /** Downward speed at the last landing (m/s), consumed by fall damage. Reset by the reader. */
+  landingSpeed = 0;
   private bobTime = 0;
   private eyeOffset = 0;
   private trauma = 0;
@@ -66,7 +73,7 @@ export class Player {
       if (input.isDown('KeyA') || input.isDown('ArrowLeft')) fx -= 1;
       jump = input.isDown('Space');
       this.crouching = input.isDown('AltLeft') || input.isDown('AltRight') || input.isDown('KeyZ');
-      this.sprinting = !this.crouching && fz > 0 && (input.isDown('ShiftLeft') || input.isDown('ShiftRight'));
+      this.sprinting = this.allowSprint && !this.crouching && fz > 0 && (input.isDown('ShiftLeft') || input.isDown('ShiftRight'));
     } else {
       this.crouching = this.sprinting = false;
     }
@@ -93,9 +100,11 @@ export class Player {
       this.velocity.z += (wz - this.velocity.z) * k;
     }
 
-    if (jump && this.onGround) {
+    this.jumped = false;
+    if (jump && this.onGround && this.allowJump) {
       this.velocity.y = P.jumpVelocity;
       this.onGround = false;
+      this.jumped = true;
     }
     this.velocity.y = Math.max(-P.maxFallSpeed, this.velocity.y - P.gravity * dt);
 
@@ -161,6 +170,7 @@ export class Player {
     // Snap down onto ground we were already standing on (walking down slopes).
     const snap = this.onGround && this.velocity.y <= 0 ? 0.3 : 0;
     if (ground > -Infinity && p.y <= ground + snap) {
+      if (!this.onGround && this.velocity.y < 0) this.landingSpeed = Math.max(this.landingSpeed, -this.velocity.y);
       p.y = ground;
       if (this.velocity.y < 0) this.velocity.y = 0;
       this.onGround = true;

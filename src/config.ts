@@ -14,9 +14,9 @@ export const CONFIG = {
     /** Highest ledge the player walks up without jumping. */
     stepHeight: 0.45,
     mouseSensitivity: 0.0022,
-    /** Below this Y the player is considered fallen into the void. */
+    /** Below this Y the player has fallen into the void. */
     voidY: -40,
-    /** On respawn, each inventory stack loses roughly this fraction of its items. */
+    /** After falling into the void, each inventory stack loses roughly this fraction of its items. */
     respawnItemLoss: 0.3,
   },
   mining: {
@@ -25,14 +25,46 @@ export const CONFIG = {
     /** How often a "hit" lands while holding the mouse (sound, dust, shake). */
     hitInterval: 0.33,
   },
-  world: {
-    /** Real seconds for a full day/night cycle. */
-    dayLengthSeconds: 600,
-    /** Time of day a new world starts at (0 = midnight, 0.25 = sunrise, 0.5 = noon). */
-    startTime: 0.3,
+  time: {
+    /** Real minutes from sunrise to sunset. */
+    dayMinutes: 7,
+    /** Real minutes from sunset to the next sunrise. */
+    nightMinutes: 7,
+    /** A new run starts this many minutes after sunrise on Day 1. */
+    startMinutesIntoDay: 0.4,
+  },
+  survival: {
+    maxHealth: 100,
+    maxHunger: 100,
+    maxStamina: 100,
+    /** Hunger lost per real minute (full to empty in ~22 minutes, about 1.5 days). */
+    hungerDrainPerMinute: 4.5,
+    /** Nights are cold: hunger drains faster and stamina recovers slower. */
+    nightHungerMultiplier: 1.35,
+    nightStaminaRegenMultiplier: 0.65,
+    /** Health regenerates only while hunger is above this value. */
+    regenHungerThreshold: 50,
+    regenPerMinute: 5,
+    /** Health lost per minute while hunger is at 0. */
+    starvingDamagePerMinute: 8,
+    sprintStaminaPerSecond: 16,
+    jumpStamina: 9,
+    miningStaminaPerSecond: 2.5,
+    staminaRegenPerSecond: 14,
+    /** Seconds after using stamina before it starts to recover. */
+    staminaRegenDelay: 1.1,
+    /** Below this stamina you can't start sprinting or jumping. */
+    staminaMinToAct: 10,
+    /** Landing faster than minSpeed (m/s) hurts: damage = (speed - minSpeed) * perSpeed. */
+    fallDamage: { minSpeed: 12, perSpeed: 5 },
+    /** Falling into the void: this much damage, then you wake up by the Monolith. */
+    voidDamage: 35,
+    /** Food poisoning from raw food. */
+    sickness: { durationSeconds: 75, damagePerMinute: 7, hungerDrainMultiplier: 1.5 },
   },
   save: {
     key: 'lastblock.save.v1',
+    recordsKey: 'lastblock.records',
     autoSaveSeconds: 30,
   },
   graphics: {

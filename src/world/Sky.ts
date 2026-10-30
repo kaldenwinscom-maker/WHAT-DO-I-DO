@@ -1,5 +1,5 @@
 // Sky, sun/moon, fog, mist over the void and drifting dust: everything that sets the mood.
-// Time of day: 0 = midnight, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset.
+// Time of day: 0 = midnight, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset (driven by DayClock).
 
 import * as THREE from 'three';
 import { CONFIG } from '../config';
@@ -165,7 +165,7 @@ export class Sky {
     this.group.add(this.dust);
 
     scene.add(this.group);
-    this.setTimeOfDay(CONFIG.world.startTime);
+    this.setTimeOfDay(0.3);
   }
 
   private buildMist(): void {
@@ -296,9 +296,8 @@ export class Sky {
     this.dustMat.color.copy(col(a.sun, b.sun)).lerp(new THREE.Color(0xc8bca8), 0.6);
   }
 
-  /** Advance time and keep sky, light and dust centred on the camera. */
-  update(dt: number, camera: THREE.Camera, advanceTime: boolean): void {
-    if (advanceTime) this.setTimeOfDay(this.time + dt / CONFIG.world.dayLengthSeconds);
+  /** Keep sky, light and dust centred on the camera. Time is set by the DayClock. */
+  update(dt: number, camera: THREE.Camera): void {
     const focus = camera.position;
     this.dome.position.copy(focus);
 

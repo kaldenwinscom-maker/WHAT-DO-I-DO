@@ -191,6 +191,26 @@ const BUILDERS: Record<ItemId, () => THREE.Object3D> = {
     g.add(sack, tie);
     return g;
   },
+  berries: () => {
+    const g = new THREE.Group();
+    const r = rng(17);
+    const berry = new THREE.SphereGeometry(0.12, 12, 10);
+    const cols = ['#5a1e2e', '#6a2434', '#4a1828', '#7a3040'];
+    for (let i = 0; i < 9; i++) {
+      const m = new THREE.Mesh(berry, plain(cols[i % cols.length], 0.35));
+      const a = i * 2.39;
+      const rad = 0.08 + Math.sqrt(i / 9) * 0.22;
+      m.position.set(Math.cos(a) * rad, (r() - 0.3) * 0.12 + (i < 3 ? 0.08 : 0), Math.sin(a) * rad);
+      m.scale.setScalar(0.85 + r() * 0.3);
+      g.add(m);
+    }
+    const leaf = new THREE.Mesh(bend(new THREE.ShapeGeometry(leafShape(), 8), 0.3), plain('#4f5a34', 0.8, { side: THREE.DoubleSide }));
+    leaf.scale.setScalar(0.5);
+    leaf.rotation.set(-1.1, 0.6, 0);
+    leaf.position.set(0.15, 0.12, -0.2);
+    g.add(leaf);
+    return g;
+  },
   pebble: () => rockMesh(31, stoneMat('rock_face', '#a09a90', 3), { x: 0.5, y: 0.33, z: 0.42 }, 5, 0.2),
   dry_leaves: () => {
     const g = new THREE.Group();

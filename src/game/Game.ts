@@ -25,9 +25,15 @@ import { Hud } from '../ui/Hud';
 import { InventoryScreen } from '../ui/InventoryScreen';
 import { Menu } from '../ui/Menu';
 import { makePanelNoiseDataUrl } from '../ui/panelNoise';
-import { SaveManager, type LegacyBlock, type SaveData } from '../save/SaveManager';
+import { SaveManager, type LegacyBlock, type RunStats, type SaveData } from '../save/SaveManager';
+import { loadRecords, recordRun } from '../save/Records';
+import { DayClock } from '../world/DayClock';
+import { NightEvents } from '../world/nightEvents';
+import { Survival } from '../player/Survival';
+import { SurvivalHud } from '../ui/SurvivalHud';
+import { GameOver } from '../ui/GameOver';
 
-type State = 'menu' | 'playing' | 'inventory';
+type State = 'menu' | 'playing' | 'inventory' | 'dead';
 
 interface MonolithTarget {
   point: THREE.Vector3;
@@ -57,6 +63,13 @@ export class Game {
   private readonly invScreen: InventoryScreen;
   private readonly menu: Menu;
   private readonly saves = new SaveManager();
+  private readonly clock = new DayClock();
+  private readonly survival = new Survival();
+  private readonly nightEvents = new NightEvents();
+  private readonly survivalHud: SurvivalHud;
+  private readonly gameOver: GameOver;
+  private stats: RunStats = { animalsRaised: 0, structuresBuilt: 0 };
+  private eatCooldown = 0;
 
   private state: State = 'menu';
   private target: MonolithTarget | null = null;
@@ -127,6 +140,14 @@ export class Game {
     // ---- UI ----
     this.hud = new Hud(document.body);
     this.invScreen = new InventoryScreen(document.body, this.inventory);
+    this.survivalHud = new SurvivalHud(document.body);
+    this.gameOver = new GameOver(document.body, () => {
+      this.gameOver.hide();
+      this.newWorld();
+      // Back to the menu state; capturing the mouse then drops straight into play.
+      this.setState('menu');
+      this.resume();
+    });
     this.menu = new Menu(document.body, {
       onPlay: () => this.resume(),
       onNewWorld: () => {
@@ -140,18 +161,24 @@ export class Game {
       this.hand.setItem(this.inventory.selectedStack?.item ?? null);
     };
 
+    this.bindSurvival();
     this.bindInput();
     this.bindPersistence();
     window.addEventListener('resize', () => this.onResize());
 
     if (!this.loadGame()) this.newWorld();
     const timeParam = Number(new URLSearchParams(location.search).get('time'));
-    if (timeParam > 0 && timeParam < 1) this.sky.setTimeOfDay(timeParam);
+    if (timeParam > 0 && timeParam < 1) {
+      this.clock.setSkyTime(timeParam);
+      this.nightEvents.sync(this.clock.isNight);
+    }
+    this.sky.setTimeOfDay(this.clock.skyTime);
     this.hud.updatePhase(this.monolith);
     this.hud.updateHotbar(this.inventory);
     this.hand.setItem(this.inventory.selectedStack?.item ?? null);
-    this.menu.open('title', this.statsLine());
+    this.menu.open('title', this.statsLine(), loadRecords().bestDays);
     this.hud.visible = false;
+    this.survivalHud.visible = false;
 
     this.timer.connect(document);
     this.renderer.setAnimationLoop((t) => this.frame(t));
@@ -188,8 +215,10 @@ export class Game {
 
   private setState(s: State): void {
     this.state = s;
-    this.hud.visible = s !== 'menu';
-    if (s === 'menu') this.menu.open(this.playSeconds > 0 ? 'pause' : 'title', this.statsLine());
+    const inGame = s === 'playing' || s === 'inventory';
+    this.hud.visible = inGame;
+    this.survivalHud.visible = inGame;
+    if (s === 'menu') this.menu.open(this.playSeconds > 0 ? 'pause' : 'title', this.statsLine(), loadRecords().bestDays);
     else this.menu.close();
     if (s === 'playing' && this.pendingNotice) {
       this.hud.toastInfo(this.pendingNotice.title, this.pendingNotice.detail, '#c8b890', 10);
@@ -201,11 +230,55 @@ export class Game {
 
   private statsLine(): string {
     const mins = Math.floor(this.playSeconds / 60);
-    return `${this.monolith.totalBreaks} breaks · ${mins} min played · graphics: ${this.quality.level}`;
+    return `Day ${this.clock.day} · ${this.monolith.totalBreaks} breaks · ${mins} min played · graphics: ${this.quality.level}`;
+  }
+
+  private bindSurvival(): void {
+    this.survival.onDamage = (amount) => {
+      if (amount >= 2) {
+        this.hud.damageFlash();
+        this.player.shake(Math.min(0.6, amount / 40));
+      }
+    };
+    this.survival.onDeath = (cause) => this.die(cause);
+    this.clock.onSunset = () => {
+      this.hud.toastInfo('Night falls', 'It is getting dark and cold. Food burns faster and you tire sooner.', '#8aa0c8', 6);
+    };
+    this.clock.onSunrise = (day) => {
+      this.hud.toastInfo(`Day ${day}`, `You made it through the night.`, '#f0c070', 6);
+      this.sfx.phaseUp();
+    };
+  }
+
+  /** Permadeath: record the run, wipe the save, show the game over screen. */
+  private die(cause: string): void {
+    if (this.state === 'dead') return;
+    this.state = 'dead';
+    this.clearMining();
+    this.input.unlock();
+    this.hud.visible = false;
+    this.survivalHud.visible = false;
+    this.menu.close();
+    if (this.invScreen.isOpen) this.invScreen.close();
+    this.sfx.boom();
+    const run = {
+      daysSurvived: this.clock.day - 1,
+      diedOnDay: this.clock.day,
+      breaks: this.monolith.totalBreaks,
+      animalsRaised: this.stats.animalsRaised,
+      structuresBuilt: this.stats.structuresBuilt,
+      cause,
+      playSeconds: this.playSeconds,
+      endedAt: Date.now(),
+    };
+    const { records, newBest } = recordRun(run);
+    this.saves.clear();
+    this.gameOver.show(run, records, newBest);
   }
 
   private bindInput(): void {
     this.input.onLockChange = (locked) => {
+      if (this.state === 'dead') return;
       if (locked) this.setState('playing');
       else if (this.state === 'playing') {
         this.setState('menu');
@@ -213,7 +286,7 @@ export class Game {
       }
     };
     document.addEventListener('pointerlockerror', () => {
-      if (this.state !== 'inventory') this.setState('menu');
+      if (this.state !== 'inventory' && this.state !== 'dead') this.setState('menu');
     });
 
     this.input.onKeyDown = (code) => {
@@ -260,10 +333,11 @@ export class Game {
   private frame(time: number): void {
     this.timer.update(time);
     const dt = Math.min(this.timer.getDelta(), 0.05);
-    const active = this.state !== 'menu';
+    const active = this.state === 'playing' || this.state === 'inventory';
     if (active) this.update(dt);
     windUniforms.uTime.value += dt;
-    this.sky.update(dt, this.camera, active);
+    this.sky.setTimeOfDay(this.clock.skyTime);
+    this.sky.update(dt, this.camera);
     this.monolith.update(dt, this.target && this.input.leftDown && this.state === 'playing' ? this.mineProgress : 0, this.sky.daylight);
     this.particles.update(dt);
     this.post.render(dt);
@@ -284,11 +358,37 @@ export class Game {
       if (wheel !== 0) this.selectSlot(this.inventory.selected + wheel);
     }
 
+    this.clock.advance(dt);
+    this.player.allowSprint = this.survival.canSprint;
+    this.player.allowJump = this.survival.canJump;
     this.player.update(dt, playing ? this.input : null, this.physics);
+    if (this.player.jumped) this.survival.useStamina(CONFIG.survival.jumpStamina);
+    this.applyFallDamage();
     if (this.player.position.y < CONFIG.player.voidY) this.respawn();
 
     if (playing) this.updateInteraction(dt);
     else this.clearMining();
+
+    const moved = Math.hypot(this.player.velocity.x, this.player.velocity.z) > 0.5;
+    this.survival.update(dt, {
+      sprinting: this.player.sprinting && moved,
+      mining: playing && !!this.target && this.input.leftDown,
+      isNight: this.clock.isNight,
+    });
+    this.nightEvents.update(
+      this.clock.isNight,
+      {
+        day: this.clock.day,
+        progress: this.clock.isNight ? this.clock.halfProgress : 0,
+        playerPosition: this.player.position,
+        toast: (t, d) => this.hud.toastInfo(t, d, '#8aa0c8', 5),
+        damagePlayer: (n, cause) => this.survival.damage(n, cause),
+      },
+      dt,
+    );
+    if (this.state === 'dead') return;
+    this.survivalHud.update(this.clock, this.survival);
+    this.eatCooldown -= dt;
 
     const moving = this.player.onGround ? Math.min(1, Math.hypot(this.player.velocity.x, this.player.velocity.z) / 4) : 0;
     this.hand.update(dt, moving, this.lookDX, this.lookDY);
@@ -332,9 +432,40 @@ export class Game {
     }
     this.hud.setMiningProgress(t && this.input.leftDown ? this.mineProgress : 0, true);
 
+    if (this.input.rightPressed || (this.input.rightDown && this.eatCooldown <= 0)) this.useHeldItem();
+  }
+
+  /** Right-click: eat held food. */
+  private useHeldItem(): void {
+    const stack = this.inventory.selectedStack;
+    const food = stack ? ITEMS[stack.item].food : undefined;
+    if (stack && food) {
+      if (this.eatCooldown > 0) return;
+      if (this.survival.hunger >= CONFIG.survival.maxHunger - 0.5 && !food.health) {
+        if (this.input.rightPressed) this.hud.toastInfo('Not hungry', 'You are already full.', '#b8b0a0', 2);
+        return;
+      }
+      this.eatCooldown = 0.7;
+      this.inventory.takeFromSlot(this.inventory.selected, 1);
+      const sick = this.survival.eat(food);
+      this.sfx.eat();
+      this.hand.triggerSwing();
+      if (sick) this.hud.toastEvent('junk', 'Food poisoning', `That ${ITEMS[stack.item].name.toLowerCase()} was bad. You feel sick.`);
+      return;
+    }
     if (this.input.rightPressed && this.buildNoticeTimer <= 0) {
       this.buildNoticeTimer = 4;
-      this.hud.toastInfo('Building is being rebuilt', 'Foundations, walls and roofs arrive in the next update.', '#b8b0a0', 3);
+      this.hud.toastInfo('Building is being rebuilt', 'Foundations, walls and roofs arrive in a later update.', '#b8b0a0', 3);
+    }
+  }
+
+  private applyFallDamage(): void {
+    const speed = this.player.landingSpeed;
+    this.player.landingSpeed = 0;
+    const f = CONFIG.survival.fallDamage;
+    if (speed > f.minSpeed) {
+      this.survival.damage((speed - f.minSpeed) * f.perSpeed, 'Fell to their death');
+      this.sfx.breakBlock('soft');
     }
   }
 
@@ -436,11 +567,17 @@ export class Game {
       lost.set(s.item, (lost.get(s.item) ?? 0) + n);
     }
     this.inventory.changed();
+    this.survival.damage(CONFIG.survival.voidDamage, 'Fell into the void');
+    if (this.survival.dead) return;
     this.placeAtSpawn();
     this.sfx.fall();
     const list = [...lost].slice(0, 4).map(([id, n]) => `${n} ${ITEMS[id].name}`).join(', ');
-    this.hud.toastInfo('Lost to the void', list ? `You lost ${list}${lost.size > 4 ? '…' : '.'}` : 'You had nothing to lose.', RARITY_COLORS.junk, 5);
-    this.hud.damageFlash();
+    this.hud.toastInfo(
+      'The void spat you back out',
+      `You took ${CONFIG.survival.voidDamage} damage${list ? ` and lost ${list}${lost.size > 4 ? '…' : '.'}` : '.'}`,
+      RARITY_COLORS.junk,
+      5,
+    );
   }
 
   /** Stand a few steps in front of the Monolith, facing it. */
@@ -458,6 +595,8 @@ export class Game {
     let hint: string | null = null;
     if (this.state === 'playing') {
       if (this.monolith.totalBreaks === 0) hint = 'Walk up to the Monolith and hold LEFT CLICK to break it';
+      else if (this.survival.hunger < 40 && this.inventory.slots.some((st) => st && ITEMS[st.item].food))
+        hint = "You're hungry: select food (1-9) and RIGHT CLICK to eat";
       else if (this.monolith.totalBreaks < 6) hint = 'Keep breaking it. Careful near the edge: hold OPTION or Z to crouch';
     }
     this.hud.setHint(hint);
@@ -476,10 +615,12 @@ export class Game {
   private snapshot(): SaveData {
     const p = this.player;
     return {
-      version: 2,
+      version: 3,
       savedAt: Date.now(),
       playSeconds: this.playSeconds,
-      timeOfDay: this.sky.timeOfDay,
+      clock: { day: this.clock.day, seconds: this.clock.seconds },
+      survival: this.survival.serialize(),
+      stats: this.stats,
       player: { x: p.position.x, y: p.position.y, z: p.position.z, yaw: p.yaw, pitch: p.pitch },
       inventory: this.inventory.serialize(),
       magic: { breaks: this.monolith.totalBreaks, starterIndex: this.starterIndex },
@@ -488,6 +629,7 @@ export class Game {
   }
 
   private saveGame(): boolean {
+    if (this.state === 'dead') return false;
     return this.saves.write(this.snapshot());
   }
 
@@ -500,7 +642,12 @@ export class Game {
     this.starterIndex = data.magic.starterIndex ?? STARTER_DROPS.length;
     this.playSeconds = data.playSeconds ?? 0;
     this.legacyBlocks = data.legacyBlocks ?? [];
-    this.sky.setTimeOfDay(data.timeOfDay ?? CONFIG.world.startTime);
+    this.clock.day = Math.max(1, data.clock.day);
+    this.clock.seconds = Math.max(0, data.clock.seconds);
+    this.nightEvents.sync(this.clock.isNight);
+    this.sky.setTimeOfDay(this.clock.skyTime);
+    this.survival.load(data.survival);
+    this.stats = { ...data.stats };
 
     const p = data.player;
     const ground = this.physics.groundHeight(p.x, p.z, CONFIG.player.radius, p.y + 1);
@@ -513,7 +660,13 @@ export class Game {
       this.player.update(0, null, this.physics);
     }
 
-    if (data.migratedFrom === 1) {
+    if (data.migratedFrom === 2) {
+      this.pendingNotice = {
+        title: 'Survival has begun',
+        detail: 'Your run continues from Day 1 with full health. Watch your food and survive as many days as you can.',
+      };
+      this.saveGame();
+    } else if (data.migratedFrom === 1) {
       const n = this.legacyBlocks.length;
       this.pendingNotice = {
         title: 'The world has been reshaped',
@@ -536,7 +689,11 @@ export class Game {
     this.playSeconds = 0;
     this.saveTimer = 0;
     this.legacyBlocks = [];
-    this.sky.setTimeOfDay(CONFIG.world.startTime);
+    this.stats = { animalsRaised: 0, structuresBuilt: 0 };
+    this.clock.reset();
+    this.nightEvents.sync(false);
+    this.sky.setTimeOfDay(this.clock.skyTime);
+    this.survival.reset();
     this.placeAtSpawn();
     this.hud.updatePhase(this.monolith);
     this.saveGame();

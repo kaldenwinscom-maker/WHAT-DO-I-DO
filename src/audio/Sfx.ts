@@ -126,6 +126,10 @@ export class Sfx {
     this.tone(600, 1.2, 0.15, 'sine', 0, 60);
   }
 
+  eat(): void {
+    for (let i = 0; i < 3; i++) this.noise(0.07, 900 + i * 200, 2, 0.3, 'bandpass', i * 0.11);
+  }
+
   click(): void {
     this.tone(700, 0.04, 0.06, 'square');
   }
