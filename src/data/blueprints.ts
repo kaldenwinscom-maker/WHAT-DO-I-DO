@@ -11,6 +11,7 @@
 import type { ItemId } from './items';
 import type { StructureId } from './structures';
 
+/** Every structure except the Crafting Table (which is part of the island) can have a blueprint. */
 export type BlueprintId = Exclude<StructureId, 'crafting_table'>;
 
 export interface BlueprintDef {

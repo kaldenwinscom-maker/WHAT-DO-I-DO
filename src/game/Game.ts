@@ -49,6 +49,8 @@ type Overlay = 'inventory' | 'crafting' | 'blueprints' | 'debug';
 type State = 'menu' | 'playing' | Overlay | 'dead';
 const OVERLAYS: readonly State[] = ['inventory', 'crafting', 'blueprints', 'debug'];
 const isOverlay = (s: State): s is Overlay => OVERLAYS.includes(s);
+/** Where you stand at the start (and after the void spits you out): in front of the Monolith. */
+const SPAWN_Z = 2.7;
 
 interface MonolithTarget {
   point: THREE.Vector3;
@@ -100,6 +102,8 @@ export class Game {
   private readonly torchLight = new THREE.PointLight(0xff9a48, 0, 14, 1.6);
   private torchBurn = 0;
   private menuRefreshTimer = 0;
+  /** Whether the Crafting Table has been opened this session (drives the tutorial hint). */
+  private tableUsed = false;
 
   private state: State = 'menu';
   private target: MonolithTarget | null = null;
@@ -448,6 +452,7 @@ export class Game {
 
   private openCrafting(table: PlacedStructure | null): void {
     this.openTable = table;
+    if (table) this.tableUsed = true;
     this.openOverlay('crafting');
     this.craftMenu.open(table ? 'table' : 'hand', table ? table.queue : this.handQueue);
   }
@@ -535,7 +540,7 @@ export class Game {
           this.sfx.place();
           this.player.shake(0.12);
           this.particles.dust(new THREE.Vector3(x, y + 0.1, z), 10, Math.max(STRUCTURES[type].size.w, STRUCTURES[type].size.d) * 0.6, 0.7);
-          this.hud.toastInfo(`Built: ${label}`, type === 'crafting_table' ? 'Walk up to it and press E to craft components.' : 'Placed.', '#9cc070', 3);
+          this.hud.toastInfo(`Built: ${label}`, 'Placed.', '#9cc070', 3);
           this.saveGame();
         },
       },
@@ -884,9 +889,28 @@ export class Game {
     );
   }
 
+  /** The Crafting Table that stands on the starting island from the beginning, facing the spawn point. */
+  private spawnFixedTable(queue: CraftQueue): void {
+    const spawn = { x: 0, z: SPAWN_Z };
+    const ground = (x: number, z: number) => this.island.heightAt(x, z);
+    const far = { x: 999, z: 999, r: 0 };
+    for (const spot of CONFIG.crafting.tableSpots) {
+      const rot = Math.atan2(spawn.x - spot.x, spawn.z - spot.z);
+      const res = this.structures.check('crafting_table', spot.x, spot.z, rot, ground, far);
+      if (res.ok || spot === CONFIG.crafting.tableSpots[CONFIG.crafting.tableSpots.length - 1]) {
+        this.structures.add('crafting_table', spot.x, res.y, spot.z, rot, queue, true);
+        return;
+      }
+    }
+  }
+
+  private get fixedTable(): PlacedStructure | undefined {
+    return this.structures.list.find((s) => s.fixed && s.type === 'crafting_table');
+  }
+
   /** Stand a few steps in front of the Monolith, facing it. */
   private placeAtSpawn(): void {
-    const z = 2.7;
+    const z = SPAWN_Z;
     this.player.teleport(0, (this.island.heightAt(0, z) ?? 0) + 0.05, z);
     this.player.yaw = 0;
     this.player.pitch = 0.05;
@@ -898,14 +922,12 @@ export class Game {
   private updateHint(): void {
     let hint: string | null = null;
     if (this.state === 'playing') {
-      if (this.monolith.totalBreaks === 0) hint = 'Walk up to the Monolith and hold LEFT CLICK to break it';
+      if (this.monolith.totalBreaks === 0) hint = 'Use the Crafting Table to turn materials into parts. First, hold LEFT CLICK on the Monolith for materials';
       else if (this.survival.hunger < 40 && this.inventory.slots.some((st) => st && ITEMS[st.item].food))
         hint = "You're hungry: select food (1-9) and RIGHT CLICK to eat";
       else if (this.monolith.totalBreaks < 6) hint = 'Keep breaking it. Careful near the edge: hold OPTION or Z to crouch';
-      else if (this.inventory.selectedStack?.item === 'crafting_table') hint = 'RIGHT CLICK to place the Crafting Table';
-      else if (this.inventory.count('crafting_table') > 0) hint = 'Select the Crafting Table in your hotbar and RIGHT CLICK to place it';
-      else if (!this.structures.list.some((st) => st.type === 'crafting_table') && this.monolith.totalBreaks < 60)
-        hint = 'Press C to craft. A Crafting Table needs 10 wood + 5 stone';
+      else if (!this.tableUsed && this.monolith.totalBreaks < 60 && this.inventory.count('log') >= 2)
+        hint = 'Walk to the Crafting Table by the Monolith and press E to turn materials into parts';
     }
     this.hud.setHint(hint);
   }
@@ -936,6 +958,7 @@ export class Game {
       blueprints: this.book.serialize(),
       structures: this.structures.serialize(),
       handQueue: this.handQueue,
+      tableQueue: this.fixedTable?.queue ?? [],
     };
   }
 
@@ -947,6 +970,11 @@ export class Game {
   private loadGame(): boolean {
     const data = this.saves.load();
     if (!data) return false;
+    // Crafting Tables used to be crafted and placed. Now there is one fixed table, so any the
+    // player made (placed or still in the inventory) are removed and their materials refunded.
+    const oldTablesInBag = data.inventory.slots.reduce((n, s) => n + (s && (s[0] as string) === 'crafting_table' ? s[1] : 0), 0);
+    const oldTablesPlaced = (data.structures ?? []).filter((st) => st.type === 'crafting_table');
+    const oldTables = oldTablesInBag + oldTablesPlaced.length;
     this.inventory.load(data.inventory);
     this.monolith.totalBreaks = data.magic.breaks;
     this.particles.setLook(this.monolith.phase.look);
@@ -961,8 +989,19 @@ export class Game {
     this.stats = { ...data.stats };
     this.handQueue = sanitizeQueue(data.handQueue);
     this.structures.clear();
+    // Crafts queued on old tables move to the fixed table, so nothing queued is lost.
+    const tableQueue = sanitizeQueue([...(data.tableQueue ?? []), ...oldTablesPlaced.flatMap((t) => t.queue ?? [])]);
+    this.spawnFixedTable(tableQueue);
     for (const st of data.structures ?? []) {
-      if (STRUCTURES[st.type]) this.structures.add(st.type, st.x, st.y, st.z, st.rot, sanitizeQueue(st.queue));
+      if (STRUCTURES[st.type] && st.type !== 'crafting_table') this.structures.add(st.type, st.x, st.y, st.z, st.rot, sanitizeQueue(st.queue));
+    }
+    if (oldTables > 0) {
+      for (const r of CONFIG.crafting.oldTableRefund) this.inventory.add(r.item, r.count * oldTables);
+      const refund = CONFIG.crafting.oldTableRefund.map((r) => `${r.count * oldTables} ${ITEMS[r.item].name.toLowerCase()}`).join(' and ');
+      this.pendingNotice = {
+        title: 'The Crafting Table has moved',
+        detail: `A Crafting Table now stands by the Monolith. Your ${oldTables} table${oldTables === 1 ? ' was' : 's were'} removed and you got back ${refund}.`,
+      };
     }
     this.quietUnlocks = true;
     this.book.load(data.blueprints);
@@ -980,10 +1019,12 @@ export class Game {
       this.player.update(0, null, this.physics);
     }
 
-    if (data.migratedFrom === 3) {
+    if (oldTables > 0) {
+      this.saveGame();
+    } else if (data.migratedFrom === 3) {
       this.pendingNotice = {
         title: 'Crafting has arrived',
-        detail: 'Pebbles are now Stone. Press C to craft a Crafting Table (10 wood + 5 stone), and B to see your blueprints.',
+        detail: 'Pebbles are now Stone. Use the Crafting Table by the Monolith (E) to turn materials into parts, and press B to see your blueprints.',
       };
       this.saveGame();
     } else if (data.migratedFrom === 2) {
@@ -1022,14 +1063,15 @@ export class Game {
     this.survival.reset();
     this.handQueue = [];
     this.structures.clear();
+    this.spawnFixedTable([]);
     this.placer.cancel();
     this.quietUnlocks = true;
     this.book.load(undefined);
     this.book.applyDayUnlocks(1);
     this.quietUnlocks = false;
     this.pendingNotice = {
-      title: 'Blueprints: Fire Pit, Chicken Coop',
-      detail: 'You start with two blueprints. Press B to see them, C to craft, and get a Crafting Table going for components.',
+      title: 'Use the Crafting Table to turn materials into parts',
+      detail: 'Break the Monolith for materials, then press E at the Crafting Table beside it. Press B to see your blueprints (Fire Pit, Chicken Coop).',
     };
     this.placeAtSpawn();
     this.hud.updatePhase(this.monolith);

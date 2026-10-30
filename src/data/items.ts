@@ -33,7 +33,6 @@ export type ItemId =
   | 'rock'
   | 'stone_hatchet'
   | 'torch'
-  | 'crafting_table'
   // junk
   | 'rot';
 
@@ -122,13 +121,6 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     maxStack: 16,
     burnSeconds: 150,
     description: 'Lights the dark around you while held. Burns out after a while.',
-  },
-  crafting_table: {
-    id: 'crafting_table',
-    name: 'Crafting Table',
-    maxStack: 1,
-    places: 'crafting_table',
-    description: 'A sturdy workbench. Right-click while holding it to place it, then press E at the table to craft components.',
   },
 
   // ---- junk ----

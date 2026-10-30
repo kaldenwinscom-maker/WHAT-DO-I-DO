@@ -63,6 +63,20 @@ export const CONFIG = {
     sickness: { durationSeconds: 75, damagePerMinute: 7, hungerDrainMultiplier: 1.5 },
   },
   crafting: {
+    /**
+     * Where the Crafting Table stands on the starting island (it can't be moved or destroyed).
+     * It turns to face the spawn point. If a spot is blocked, the next one is tried.
+     */
+    tableSpots: [
+      { x: 2.35, z: 0.7 },
+      { x: -2.35, z: 0.7 },
+      { x: 2.2, z: 1.6 },
+    ],
+    /** Materials refunded for each Crafting Table a player built in an older version. */
+    oldTableRefund: [
+      { item: 'log', count: 10 },
+      { item: 'stone', count: 5 },
+    ] as { item: 'log' | 'stone'; count: number }[],
     /** How close (metres) you must be to a crafting table to open it with E. */
     useRange: 2.6,
     /** Table crafting keeps running while you stay within this distance (metres). */

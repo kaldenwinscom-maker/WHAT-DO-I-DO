@@ -1,5 +1,5 @@
 // Crafting recipes. `station: 'hand'` can be crafted anywhere (C key);
-// `station: 'table'` needs a placed Crafting Table (press E at the table).
+// `station: 'table'` needs the Crafting Table that stands by the Monolith (press E at the table).
 // `time` is seconds per craft. Several recipes may make the same item.
 
 import type { ItemId } from './items';
@@ -18,7 +18,6 @@ export interface Recipe {
 
 export const RECIPES: Recipe[] = [
   // ---- hand crafting: only the basics ----
-  { id: 'hand_table', station: 'hand', output: { item: 'crafting_table', count: 1 }, inputs: [{ item: 'log', count: 10 }, { item: 'stone', count: 5 }], time: 6 },
   { id: 'hand_sticks', station: 'hand', output: { item: 'stick', count: 3 }, inputs: [{ item: 'log', count: 1 }], time: 2.5 },
   { id: 'hand_rock', station: 'hand', output: { item: 'rock', count: 1 }, inputs: [{ item: 'stone', count: 3 }], time: 2 },
   {

@@ -61,7 +61,7 @@ export class CraftingMenu {
     this.title.textContent = station === 'hand' ? 'Hand Crafting' : 'Crafting Table';
     this.sub.textContent =
       station === 'hand'
-        ? 'Only the basics. Build a Crafting Table for components.'
+        ? 'Only the basics. Use the Crafting Table by the Monolith for parts.'
         : 'Components for blueprints. Crafting continues while you stay near the table.';
     const recipes = recipesFor(station);
     if (!this.selected || this.selected.station !== station) this.selected = recipes[0];

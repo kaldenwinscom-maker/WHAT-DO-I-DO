@@ -31,10 +31,10 @@ Then open the URL it prints (usually http://localhost:5173) in Chrome, Safari or
 | Shift | Sprint |
 | Option / Z | Crouch (you won't walk off edges) |
 | Left click (hold) | Mine the Monolith |
-| Right click (or Ctrl + click) | Eat held food / place a held Crafting Table |
+| Right click (or Ctrl + click) | Eat held food |
 | 1–9 / scroll | Select hotbar slot |
-| E | Inventory, or use a Crafting Table when standing next to it |
-| C | Hand crafting (Crafting Table, sticks, rock tools, torch) |
+| E | Inventory, or use the Crafting Table (beside the Monolith) when standing next to it |
+| C | Hand crafting (sticks, rock tools, torch) |
 | B | Blueprints: view, and TRACK up to 3 on screen |
 | G | Build a tracked blueprint once its checklist is complete |
 | R / scroll | Rotate while placing (left click places, right click cancels) |
@@ -69,7 +69,7 @@ All game content lives in `src/data/`:
 - `src/config.ts`:
   - `time`: day and night length in real minutes (default 7 + 7)
   - `blueprints.dayUnlocks`: the day each blueprint unlocks; `maxTracked`
-  - `crafting`: how close you must be to use a table, and to keep it crafting
+  - `crafting`: where the fixed Crafting Table stands, how close you must be to use it and to keep it crafting
   - `survival`: hunger drain, night cold, health regen, starving, stamina costs, fall/void damage, food poisoning
   - player physics, reach, void item loss, autosave interval, fog
 

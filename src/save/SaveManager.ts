@@ -30,6 +30,8 @@ export interface SaveData {
   blueprints: { unlocked: string[]; tracked: string[] };
   structures: SavedStructure[];
   handQueue: CraftQueue;
+  /** Crafting queue of the fixed Crafting Table by the Monolith. */
+  tableQueue?: CraftQueue;
   /** Set when this save was just migrated from an older version (cleared after the notice). */
   migratedFrom?: number;
 }

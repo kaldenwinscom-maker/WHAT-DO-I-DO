@@ -16,6 +16,8 @@ export interface PlacedStructure {
   rot: number;
   /** Crafting queue (crafting tables only). */
   queue: CraftQueue;
+  /** Part of the world: can't be picked up, destroyed or crumbled, and isn't saved as a build. */
+  fixed: boolean;
   mesh: THREE.Object3D;
   collider: Collider | null;
 }
@@ -39,7 +41,7 @@ export class Structures {
 
   constructor(private readonly physics: Physics) {}
 
-  add(type: StructureId, x: number, y: number, z: number, rot: number, queue: CraftQueue = []): PlacedStructure {
+  add(type: StructureId, x: number, y: number, z: number, rot: number, queue: CraftQueue = [], fixed = false): PlacedStructure {
     const def = STRUCTURES[type];
     const mesh = makeStructureModel(type);
     mesh.position.set(x, y, z);
@@ -49,7 +51,7 @@ export class Structures {
     const collider: Collider | null =
       def.height > 0 ? { kind: 'obox', x, z, hx: def.size.w / 2, hz: def.size.d / 2, rot, y0: y - 0.5, y1: y + def.height } : null;
     if (collider) this.physics.colliders.push(collider);
-    const s: PlacedStructure = { uid: this.nextUid++, type, x, y, z, rot, queue, mesh, collider };
+    const s: PlacedStructure = { uid: this.nextUid++, type, x, y, z, rot, queue, fixed, mesh, collider };
     this.list.push(s);
     return s;
   }
@@ -138,6 +140,6 @@ export class Structures {
   }
 
   serialize(): SavedStructure[] {
-    return this.list.map((s) => ({ type: s.type, x: s.x, y: s.y, z: s.z, rot: s.rot, queue: s.queue.length ? s.queue : undefined }));
+    return this.list.filter((s) => !s.fixed).map((s) => ({ type: s.type, x: s.x, y: s.y, z: s.z, rot: s.rot, queue: s.queue.length ? s.queue : undefined }));
   }
 }

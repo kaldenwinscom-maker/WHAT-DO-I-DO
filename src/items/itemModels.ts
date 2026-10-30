@@ -7,7 +7,6 @@ import { Assets } from '../render/Assets';
 import { makeTriplanarMaterial } from '../render/triplanar';
 import { makeRockGeometry } from '../world/rocks';
 import { rng } from '../world/noise';
-import { makeStructureModel } from '../build/structureModels';
 
 const matCache = new Map<string, THREE.Material>();
 function cached<T extends THREE.Material>(key: string, make: () => T): T {
@@ -384,7 +383,7 @@ const BUILDERS: Record<ItemId, () => THREE.Object3D> = {
     g.add(flame);
     return g;
   },
-  crafting_table: () => makeStructureModel('crafting_table'),
+
   dry_leaves: () => {
     const g = new THREE.Group();
     const cols = ['#8a6a3c', '#7a5a34', '#9a7a44'];
