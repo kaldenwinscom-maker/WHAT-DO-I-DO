@@ -1,9 +1,10 @@
 # Last Block
 
-A browser-based 3D survival game. You start on a single floating block in an empty sky.
-Break it for random drops (some good, many bad), build outward, and survive.
+A browser-based 3D survival game. You start on a tiny floating island with a single glowing
+rock, the Monolith. Break it for random drops (some good, many bad), build outward, and survive.
 
-Built with Vite + TypeScript + Three.js. Runs entirely in the browser; progress saves to localStorage.
+Built with Vite + TypeScript + Three.js, with PBR materials, an HDRI sky and post-processing
+(`postprocessing` + N8AO). Runs entirely in the browser; progress saves to localStorage.
 
 ## Run it on your Mac
 
@@ -28,29 +29,43 @@ Then open the URL it prints (usually http://localhost:5173) in Chrome, Safari or
 | Space | Jump |
 | Shift | Sprint |
 | Option / Z | Crouch (you won't walk off edges) |
-| Left click (hold) | Mine the magic block / break blocks |
-| Right click (or Ctrl + click) | Place the selected block |
+| Left click (hold) | Mine the Monolith |
 | 1–9 / scroll | Select hotbar slot |
 | E | Inventory |
 | Esc | Pause |
+
+## Graphics quality
+
+Add `?quality=low`, `?quality=medium` (default) or `?quality=high` to the URL. The choice is remembered.
+
+| | Low | Medium | High |
+| --- | --- | --- | --- |
+| Shadows | 1024 | 2048 | 2048 |
+| Ambient occlusion | off | half-res | full-res |
+| Bloom | off | on | on |
+| Anti-aliasing | off | off | 4× MSAA |
+| Grass blades | 5k | 11k | 20k |
+
+For testing, `?time=0.75` jumps to a time of day (0 = midnight, 0.25 sunrise, 0.5 noon, 0.75 sunset).
 
 ## Rebalancing
 
 All game content lives in `src/data/`:
 
 - `loot.ts`: rarity weights, loot tables per phase, starter drops, bad-event strength
-- `items.ts`: every item (name, stack size, which block it places, perishable)
-- `blocks.ts`: block types and how long they take to break
-- `phases.ts`: phase names, break thresholds, magic block colours
-- `src/config.ts`: player physics, reach, respawn item loss, autosave interval, graphics
+- `items.ts`: every item (name, stack size, perishable); their 3D models are in `src/items/itemModels.ts`
+- `phases.ts`: phase names, break thresholds, and each phase's Monolith look (textures, tint, vein colour)
+- `src/config.ts`: player physics, reach, respawn item loss, day length, autosave interval, fog
 
 ## Project layout
 
 ```
 src/
-  data/       editable game content (loot, items, blocks, phases)
-  world/      voxel world (instanced meshes), sky/lighting, procedural textures
-  block/      the magic block
+  data/       editable game content (loot, items, phases)
+  render/     asset loading, triplanar PBR materials, post-processing, quality presets
+  world/      floating island, grass, rocks, sky/day-night, collision physics
+  block/      the Monolith
+  items/      3D item models (icons, held item, drops)
   loot/       loot rolling + bad events
   inventory/  inventory model
   player/     controller, input, held item
@@ -60,6 +75,11 @@ src/
   fx/         particles
   game/       Game: wires everything together and runs the loop
 ```
+
+## Assets
+
+Textures and the sky HDRI are CC0 from Poly Haven, see `public/CREDITS.md`. Everything else
+(models, sounds, shaders) is generated in code.
 
 ## Build
 

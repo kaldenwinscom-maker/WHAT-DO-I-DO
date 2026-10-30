@@ -5,15 +5,18 @@ import * as THREE from 'three';
 import { EVENT_SETTINGS, type LootEventId } from '../data/loot';
 import { ITEMS, type ItemId } from '../data/items';
 import type { Inventory } from '../inventory/Inventory';
-import type { World } from '../world/World';
 
 export interface EventContext {
   inventory: Inventory;
-  world: World;
   playerPosition: THREE.Vector3;
+  /** Centre of the Monolith, the source of bursts. */
+  monolithPosition: THREE.Vector3;
   knockPlayer(velocity: THREE.Vector3): void;
-  /** Visual + audio hook for blocks removed by an event. */
-  onBlockRemoved(x: number, y: number, z: number): void;
+  /**
+   * Break away up to `count` pieces from the edge of the base, never the ground under the
+   * player. Returns how many actually broke.
+   */
+  crumbleEdge(count: number): number;
 }
 
 export interface EventOutcome {
@@ -37,7 +40,7 @@ export function runLootEvent(event: LootEventId, ctx: EventContext): EventOutcom
 
 function burst(ctx: EventContext): EventOutcome {
   const s = EVENT_SETTINGS.burst;
-  const dir = new THREE.Vector3(ctx.playerPosition.x - 0.5, 0, ctx.playerPosition.z - 0.5);
+  const dir = new THREE.Vector3(ctx.playerPosition.x - ctx.monolithPosition.x, 0, ctx.playerPosition.z - ctx.monolithPosition.z);
   if (dir.lengthSq() < 0.01) {
     const a = Math.random() * Math.PI * 2;
     dir.set(Math.cos(a), 0, Math.sin(a));
@@ -45,7 +48,7 @@ function burst(ctx: EventContext): EventOutcome {
   dir.normalize().multiplyScalar(s.horizontalForce);
   dir.y = s.upwardForce;
   ctx.knockPlayer(dir);
-  return { title: 'Unstable Burst!', detail: 'The block lashes out and throws you back.', sound: 'boom' };
+  return { title: 'Unstable Burst!', detail: 'The Monolith lashes out and throws you back.', sound: 'boom' };
 }
 
 function rot(ctx: EventContext): EventOutcome {
@@ -79,38 +82,14 @@ function rot(ctx: EventContext): EventOutcome {
 
 function crumble(ctx: EventContext): EventOutcome {
   const s = EVENT_SETTINGS.crumble;
-  const p = ctx.playerPosition;
-  const standX = Math.floor(p.x);
-  const standZ = Math.floor(p.z);
-  const candidates: [number, number, number, number][] = [];
-  for (const [x, y, z, id] of ctx.world.entries()) {
-    if (id === 'magic') continue;
-    // Never pull the floor straight out from under the player.
-    if (x === standX && z === standZ) continue;
-    // Edge blocks (farther from the magic block) are more likely to crumble.
-    candidates.push([x, y, z, 1 + Math.hypot(x, z)]);
-  }
-  if (candidates.length === 0) {
-    return { title: 'Tremor', detail: 'The ground shudders. Good thing there is nothing to lose.', sound: 'crumble' };
-  }
   const n = s.minBlocks + Math.floor(Math.random() * (s.maxBlocks - s.minBlocks + 1));
-  let removed = 0;
-  for (let i = 0; i < n && candidates.length > 0; i++) {
-    const total = candidates.reduce((a, c) => a + c[3], 0);
-    let r = Math.random() * total;
-    let pick = 0;
-    for (; pick < candidates.length - 1; pick++) {
-      r -= candidates[pick][3];
-      if (r <= 0) break;
-    }
-    const [x, y, z] = candidates.splice(pick, 1)[0];
-    ctx.world.remove(x, y, z);
-    ctx.onBlockRemoved(x, y, z);
-    removed++;
+  const removed = ctx.crumbleEdge(n);
+  if (removed === 0) {
+    return { title: 'Tremor', detail: 'The island shudders. Loose rock tumbles into the void.', sound: 'crumble' };
   }
   return {
     title: 'Crumble!',
-    detail: `${removed} block${removed === 1 ? '' : 's'} of your island fell into the void.`,
+    detail: `${removed} piece${removed === 1 ? '' : 's'} of your base fell into the void.`,
     sound: 'crumble',
   };
 }

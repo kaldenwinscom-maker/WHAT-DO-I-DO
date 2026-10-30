@@ -528,3 +528,46 @@ body {
   font-size: 12px;
   color: var(--ink-dim);
 }
+
+/* ---------- loading screen ---------- */
+
+#loading {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  background: radial-gradient(ellipse at center, #24221f, #0d0c0b);
+  transition: opacity 0.6s;
+}
+#loading.done {
+  opacity: 0;
+  pointer-events: none;
+}
+#loading .title {
+  font-family: var(--font-title);
+  font-size: 40px;
+  letter-spacing: 0.3em;
+  color: var(--ink);
+}
+#loading .bar {
+  width: 260px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.1);
+}
+#loading .fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  transition: width 0.2s;
+}
+#loading .sub,
+#loading .msg {
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  color: var(--ink-dim);
+  text-align: center;
+  max-width: 420px;
+}

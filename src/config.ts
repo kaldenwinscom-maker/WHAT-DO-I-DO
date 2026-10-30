@@ -2,7 +2,7 @@
 
 export const CONFIG = {
   player: {
-    width: 0.6,
+    radius: 0.32,
     height: 1.8,
     eyeHeight: 1.62,
     walkSpeed: 4.3,
@@ -10,7 +10,9 @@ export const CONFIG = {
     jumpVelocity: 8.6,
     gravity: 26,
     maxFallSpeed: 50,
-    reach: 5,
+    reach: 4.5,
+    /** Highest ledge the player walks up without jumping. */
+    stepHeight: 0.45,
     mouseSensitivity: 0.0022,
     /** Below this Y the player is considered fallen into the void. */
     voidY: -40,
@@ -18,17 +20,23 @@ export const CONFIG = {
     respawnItemLoss: 0.3,
   },
   mining: {
-    /** Seconds to break the magic block with bare hands. */
+    /** Seconds to break the Monolith with the starting rock. */
     magicBlockTime: 1.0,
+    /** How often a "hit" lands while holding the mouse (sound, dust, shake). */
+    hitInterval: 0.33,
+  },
+  world: {
+    /** Real seconds for a full day/night cycle. */
+    dayLengthSeconds: 600,
+    /** Time of day a new world starts at (0 = midnight, 0.25 = sunrise, 0.5 = noon). */
+    startTime: 0.3,
   },
   save: {
     key: 'lastblock.save.v1',
     autoSaveSeconds: 30,
   },
   graphics: {
-    maxPixelRatio: 1.75,
-    shadowMapSize: 2048,
-    fogNear: 30,
-    fogFar: 160,
+    /** Exponential fog density at midday; nights and the void get denser fog. */
+    fogDensity: 0.011,
   },
 } as const;

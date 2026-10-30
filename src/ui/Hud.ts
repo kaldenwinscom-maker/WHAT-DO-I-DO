@@ -3,7 +3,7 @@
 import { ITEMS, type ItemId } from '../data/items';
 import { RARITY_COLORS, type Rarity } from '../data/loot';
 import { HOTBAR_SIZE, type Inventory } from '../inventory/Inventory';
-import type { MagicBlock } from '../block/MagicBlock';
+import type { Monolith } from '../block/Monolith';
 import { itemIconUrl } from './icons';
 
 const RING_R = 14;
@@ -94,7 +94,7 @@ export class Hud {
     this.ring.style.stroke = magic ? '#c8e07a' : 'var(--accent)';
   }
 
-  updatePhase(magic: MagicBlock): void {
+  updatePhase(magic: Monolith): void {
     const pr = magic.phaseProgress;
     this.phaseLabel.textContent = `Phase ${magic.phaseNumber + 1}`;
     this.phaseName.textContent = magic.phase.name;

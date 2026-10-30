@@ -1,29 +1,29 @@
-// First-person controller: mouse look, walking, sprinting, jumping, crouching and voxel collision.
+// First-person controller: mouse look, walking, sprinting, jumping, crouching, collision
+// against the terrain and colliders, and camera shake.
 
 import * as THREE from 'three';
 import { CONFIG } from '../config';
-import type { World } from '../world/World';
+import type { Physics } from '../world/Physics';
 import type { Input } from './Input';
 
 const P = CONFIG.player;
-const EPS = 1e-4;
 const CROUCH_SPEED = 1.9;
-const CROUCH_EYE_DROP = 0.28;
-
-type Axis = 'x' | 'y' | 'z';
+const CROUCH_EYE_DROP = 0.32;
 
 export class Player {
-  /** Feet position (center of the bottom of the bounding box). */
-  readonly position = new THREE.Vector3(0.5, 1, 0.5);
+  /** Feet position (centre of the bottom of the body). */
+  readonly position = new THREE.Vector3(0, 1, 0);
   readonly velocity = new THREE.Vector3();
   yaw = 0;
-  pitch = -0.35;
+  pitch = -0.2;
   onGround = false;
   crouching = false;
   sprinting = false;
   mouseSensitivity: number = P.mouseSensitivity;
   private bobTime = 0;
   private eyeOffset = 0;
+  private trauma = 0;
+  private shakeTime = 0;
 
   constructor(readonly camera: THREE.PerspectiveCamera) {
     camera.rotation.order = 'YXZ';
@@ -35,12 +35,13 @@ export class Player {
     this.pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, this.pitch));
   }
 
-  get eyePosition(): THREE.Vector3 {
-    return this.camera.position;
-  }
-
   lookDirection(out = new THREE.Vector3()): THREE.Vector3 {
     return this.camera.getWorldDirection(out);
+  }
+
+  /** Add camera shake (0..1; it stacks and decays). */
+  shake(amount: number): void {
+    this.trauma = Math.min(1, this.trauma + amount);
   }
 
   knock(v: THREE.Vector3): void {
@@ -53,16 +54,7 @@ export class Player {
     this.velocity.set(0, 0, 0);
   }
 
-  /** Does the player's box overlap the given block cell? */
-  overlapsBlock(bx: number, by: number, bz: number): boolean {
-    const hw = P.width / 2;
-    const p = this.position;
-    return (
-      p.x + hw > bx && p.x - hw < bx + 1 && p.y + P.height > by && p.y < by + 1 && p.z + hw > bz && p.z - hw < bz + 1
-    );
-  }
-
-  update(dt: number, input: Input | null, world: World): void {
+  update(dt: number, input: Input | null, physics: Physics): void {
     // ---- intent ----
     let fx = 0;
     let fz = 0;
@@ -82,7 +74,6 @@ export class Player {
     const speed = this.crouching ? CROUCH_SPEED : this.sprinting ? P.sprintSpeed : P.walkSpeed;
     const sin = Math.sin(this.yaw);
     const cos = Math.cos(this.yaw);
-    // Forward is -Z rotated by yaw.
     let wx = -sin * fz + cos * fx;
     let wz = -cos * fz - sin * fx;
     const len = Math.hypot(wx, wz);
@@ -91,9 +82,8 @@ export class Player {
       wz = (wz / len) * speed;
     }
 
-    // ---- horizontal velocity ----
     if (this.onGround) {
-      const k = 1 - Math.exp(-18 * dt);
+      const k = 1 - Math.exp(-16 * dt);
       this.velocity.x += (wx - this.velocity.x) * k;
       this.velocity.z += (wz - this.velocity.z) * k;
     } else if (len > 0) {
@@ -103,100 +93,79 @@ export class Player {
       this.velocity.z += (wz - this.velocity.z) * k;
     }
 
-    // ---- vertical ----
     if (jump && this.onGround) {
       this.velocity.y = P.jumpVelocity;
       this.onGround = false;
     }
     this.velocity.y = Math.max(-P.maxFallSpeed, this.velocity.y - P.gravity * dt);
 
-    // ---- integrate with collision, in substeps to avoid tunnelling ----
-    const maxStep = 0.35;
-    const travel = Math.max(Math.abs(this.velocity.x), Math.abs(this.velocity.y), Math.abs(this.velocity.z)) * dt;
-    const steps = Math.max(1, Math.ceil(travel / maxStep));
+    // ---- integrate in substeps ----
+    const travel = Math.hypot(this.velocity.x, this.velocity.y, this.velocity.z) * dt;
+    const steps = Math.max(1, Math.ceil(travel / 0.25));
     const sdt = dt / steps;
     const wasOnGround = this.onGround;
-    this.onGround = false;
-    for (let i = 0; i < steps; i++) {
-      this.moveAxis('y', this.velocity.y * sdt, world);
-      const guard = this.crouching && (wasOnGround || this.onGround);
-      this.moveHorizontal('x', this.velocity.x * sdt, world, guard);
-      this.moveHorizontal('z', this.velocity.z * sdt, world, guard);
-    }
+    for (let i = 0; i < steps; i++) this.substep(sdt, physics, this.crouching && wasOnGround);
 
     // ---- camera ----
-    const horizSpeed = Math.hypot(this.velocity.x, this.velocity.z);
-    if (this.onGround && horizSpeed > 0.5) this.bobTime += dt * horizSpeed * 1.9;
-    const bob = this.onGround ? Math.sin(this.bobTime) * 0.04 * Math.min(1, horizSpeed / P.walkSpeed) : 0;
+    const horiz = Math.hypot(this.velocity.x, this.velocity.z);
+    if (this.onGround && horiz > 0.5) this.bobTime += dt * horiz * 1.8;
+    const bob = this.onGround ? Math.sin(this.bobTime) * 0.035 * Math.min(1, horiz / P.walkSpeed) : 0;
     const targetEye = this.crouching ? CROUCH_EYE_DROP : 0;
     this.eyeOffset += (targetEye - this.eyeOffset) * (1 - Math.exp(-14 * dt));
-    this.camera.position.set(this.position.x, this.position.y + P.eyeHeight - this.eyeOffset + bob, this.position.z);
-    this.camera.rotation.set(this.pitch, this.yaw, 0);
-    const targetFov = this.sprinting && horizSpeed > P.walkSpeed ? 82 : 75;
+
+    this.trauma = Math.max(0, this.trauma - dt * 1.6);
+    this.shakeTime += dt;
+    const sh = this.trauma * this.trauma;
+    const n = (f: number, o: number) => Math.sin(this.shakeTime * f + o) * 0.6 + Math.sin(this.shakeTime * f * 2.3 + o * 3) * 0.4;
+    this.camera.position.set(
+      this.position.x + n(31, 1) * sh * 0.05,
+      this.position.y + P.eyeHeight - this.eyeOffset + bob + n(37, 2) * sh * 0.05,
+      this.position.z,
+    );
+    this.camera.rotation.set(this.pitch + n(29, 3) * sh * 0.05, this.yaw + n(23, 4) * sh * 0.05, n(19, 5) * sh * 0.07);
+
+    const targetFov = this.sprinting && horiz > P.walkSpeed ? 80 : 74;
     if (Math.abs(this.camera.fov - targetFov) > 0.05) {
       this.camera.fov += (targetFov - this.camera.fov) * (1 - Math.exp(-8 * dt));
       this.camera.updateProjectionMatrix();
     }
   }
 
-  private moveHorizontal(axis: 'x' | 'z', d: number, world: World, edgeGuard: boolean): void {
-    if (d === 0) return;
-    const before = this.position[axis];
-    this.moveAxis(axis, d, world);
-    if (edgeGuard && !this.hasSupport(world)) {
-      this.position[axis] = before;
-      this.velocity[axis] = 0;
-    }
-  }
-
-  /** Is there any block directly beneath the player's footprint? */
-  private hasSupport(world: World): boolean {
-    const hw = P.width / 2 - 0.05;
-    const y = Math.floor(this.position.y - 0.05);
+  private substep(dt: number, physics: Physics, edgeGuard: boolean): void {
     const p = this.position;
-    for (const [ox, oz] of [
-      [-hw, -hw],
-      [hw, -hw],
-      [-hw, hw],
-      [hw, hw],
-    ]) {
-      if (world.isSolid(Math.floor(p.x + ox), y, Math.floor(p.z + oz))) return true;
-    }
-    return false;
-  }
+    const before = p.clone();
 
-  private moveAxis(axis: Axis, d: number, world: World): void {
-    if (d === 0) return;
-    this.position[axis] += d;
-    const hw = P.width / 2;
-    const p = this.position;
-    const minX = Math.floor(p.x - hw + EPS);
-    const maxX = Math.floor(p.x + hw - EPS);
-    const minY = Math.floor(p.y + EPS);
-    const maxY = Math.floor(p.y + P.height - EPS);
-    const minZ = Math.floor(p.z - hw + EPS);
-    const maxZ = Math.floor(p.z + hw - EPS);
-    for (let x = minX; x <= maxX; x++) {
-      for (let y = minY; y <= maxY; y++) {
-        for (let z = minZ; z <= maxZ; z++) {
-          if (!world.isSolid(x, y, z)) continue;
-          if (axis === 'y') {
-            if (d > 0) p.y = y - P.height - EPS;
-            else {
-              p.y = y + 1 + EPS;
-              this.onGround = true;
-            }
-            this.velocity.y = 0;
-          } else if (axis === 'x') {
-            p.x = d > 0 ? x - hw - EPS : x + 1 + hw + EPS;
-            this.velocity.x = 0;
-          } else {
-            p.z = d > 0 ? z - hw - EPS : z + 1 + hw + EPS;
-            this.velocity.z = 0;
-          }
-          return;
-        }
+    // Horizontal.
+    p.x += this.velocity.x * dt;
+    p.z += this.velocity.z * dt;
+    physics.resolveHorizontal(p, P.radius, P.height, P.stepHeight);
+    if (edgeGuard) {
+      const g = physics.groundHeight(p.x, p.z, P.radius * 0.6, p.y + P.stepHeight);
+      if (g < p.y - 0.6) {
+        p.x = before.x;
+        p.z = before.z;
+        this.velocity.x = this.velocity.z = 0;
       }
+    }
+
+    // Vertical.
+    p.y += this.velocity.y * dt;
+    if (this.velocity.y > 0) {
+      const ceil = physics.ceilingHeight(p.x, p.z, P.radius, before.y + P.height - 0.01);
+      if (p.y + P.height > ceil) {
+        p.y = ceil - P.height;
+        this.velocity.y = 0;
+      }
+    }
+    const ground = physics.groundHeight(p.x, p.z, P.radius, Math.max(p.y, before.y) + P.stepHeight);
+    // Snap down onto ground we were already standing on (walking down slopes).
+    const snap = this.onGround && this.velocity.y <= 0 ? 0.3 : 0;
+    if (ground > -Infinity && p.y <= ground + snap) {
+      p.y = ground;
+      if (this.velocity.y < 0) this.velocity.y = 0;
+      this.onGround = true;
+    } else {
+      this.onGround = false;
     }
   }
 }

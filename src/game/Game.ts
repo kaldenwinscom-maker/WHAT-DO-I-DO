@@ -2,13 +2,17 @@
 
 import * as THREE from 'three';
 import { CONFIG } from '../config';
-import { BLOCKS } from '../data/blocks';
 import { ITEMS, type ItemId } from '../data/items';
 import { RARITY_COLORS, STARTER_DROPS, type Rarity } from '../data/loot';
-import { World, type RayHit } from '../world/World';
+import { Assets } from '../render/Assets';
+import { PostFX } from '../render/PostFX';
+import { resolveQuality, type QualitySettings } from '../render/quality';
+import { makeTriplanarMaterial } from '../render/triplanar';
+import { Island, makeGrass, makeStones, windUniforms } from '../world/Island';
+import { Physics } from '../world/Physics';
 import { Sky } from '../world/Sky';
-import { getMagicTextures, getTextureCanvas, makeCrackTextures, setMaxAnisotropy } from '../world/textures';
-import { MagicBlock, MAGIC_POS } from '../block/MagicBlock';
+import { rng } from '../world/noise';
+import { Monolith } from '../block/Monolith';
 import { rollLoot, type LootResult } from '../loot/LootRoller';
 import { runLootEvent } from '../loot/events';
 import { HOTBAR_SIZE, Inventory } from '../inventory/Inventory';
@@ -20,27 +24,33 @@ import { Sfx } from '../audio/Sfx';
 import { Hud } from '../ui/Hud';
 import { InventoryScreen } from '../ui/InventoryScreen';
 import { Menu } from '../ui/Menu';
-import { makePanelNoiseDataUrl } from '../world/textures';
-import { SaveManager, type SaveData } from '../save/SaveManager';
+import { makePanelNoiseDataUrl } from '../ui/panelNoise';
+import { SaveManager, type LegacyBlock, type SaveData } from '../save/SaveManager';
 
 type State = 'menu' | 'playing' | 'inventory';
 
-const PLACE_REPEAT = 0.22;
-const HIT_SOUND_INTERVAL = 0.24;
+interface MonolithTarget {
+  point: THREE.Vector3;
+  normal: THREE.Vector3;
+  distance: number;
+}
 
 export class Game {
+  private readonly quality: QualitySettings;
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly camera: THREE.PerspectiveCamera;
   private readonly timer = new THREE.Timer();
+  private readonly post: PostFX;
 
-  private readonly world = new World();
+  private readonly physics = new Physics();
   private readonly sky: Sky;
-  private readonly magic = new MagicBlock();
+  private readonly island: Island;
+  private readonly monolith: Monolith;
+  private readonly particles: Particles;
   private readonly player: Player;
   private readonly input: Input;
   private readonly hand: Hand;
-  private readonly particles = new Particles();
   private readonly sfx = new Sfx();
   private readonly inventory = new Inventory();
   private readonly hud: Hud;
@@ -48,58 +58,73 @@ export class Game {
   private readonly menu: Menu;
   private readonly saves = new SaveManager();
 
-  private readonly highlight: THREE.LineSegments;
-  private readonly crack: THREE.Mesh;
-  private readonly crackTextures = makeCrackTextures(6);
-
   private state: State = 'menu';
-  private target: RayHit | null = null;
-  private mineKey: string | null = null;
+  private target: MonolithTarget | null = null;
   private mineProgress = 0;
-  private hitSoundTimer = 0;
-  private placeTimer = 0;
+  private hitTimer = 0;
   private starterIndex = 0;
   private playSeconds = 0;
   private saveTimer = 0;
+  private buildNoticeTimer = 0;
+  private legacyBlocks: LegacyBlock[] = [];
+  /** Shown the first time the player enters the game this session. */
+  private pendingNotice: { title: string; detail: string } | null = null;
+  private readonly raycaster = new THREE.Raycaster();
   private readonly tmpDir = new THREE.Vector3();
+  private lookDX = 0;
+  private lookDY = 0;
 
   constructor(container: HTMLElement) {
     document.documentElement.style.setProperty('--panel-noise', `url(${makePanelNoiseDataUrl()})`);
+    this.quality = resolveQuality();
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, CONFIG.graphics.maxPixelRatio));
+    this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', stencil: false });
+    this.renderer.setPixelRatio(this.quality.pixelRatio);
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(this.renderer.domElement);
-    setMaxAnisotropy(this.renderer.capabilities.getMaxAnisotropy());
 
-    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 1000);
+    this.camera = new THREE.PerspectiveCamera(74, window.innerWidth / window.innerHeight, 0.05, 1500);
     this.scene.add(this.camera);
-    this.sky = new Sky(this.scene);
-    this.scene.add(this.world.group, this.magic.mesh, this.particles.mesh);
+
+    // Image-based ambient light from the HDRI.
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromEquirectangular(Assets.skyHdr!).texture;
+    pmrem.dispose();
+    this.sky = new Sky(this.scene, Assets.skyHdr!, this.quality);
+
+    // ---- the island and its dressing ----
+    const islandMat = makeTriplanarMaterial({
+      base: { set: 'rock_face', scale: 0.26, tint: '#8f8a80', normalStrength: 1.2 },
+      top: { set: 'forrest_ground_01', scale: 0.32, tint: '#a39684', amount: 1, threshold: 0.5 },
+    });
+    this.island = new Island({ seed: 12, radius: 5.4, depth: 7, bumpiness: 0.2 }, islandMat);
+    this.physics.terrains.push(this.island);
+    this.scene.add(this.island.mesh);
+
+    const groundY = this.island.heightAt(0, 0) ?? 0;
+    this.monolith = new Monolith(groundY);
+    this.physics.colliders.push(this.monolith.collider);
+    this.scene.add(this.monolith.mesh);
+
+    const avoid = [{ x: 0, z: 0, r: 1.45 }];
+    this.scene.add(makeGrass(this.island, this.quality.grassBlades, avoid));
+    const pebbleMat = makeTriplanarMaterial({ base: { set: 'rock_face', scale: 1.2, tint: '#8f8d88' } });
+    this.scene.add(makeStones(this.island, 40, pebbleMat, avoid));
+    this.addDistantIslets(islandMat);
+
+    this.particles = new Particles(this.physics, this.monolith.phase.look);
+    this.monolith.onPhaseLook = (look) => this.particles.setLook(look);
+    this.scene.add(this.particles.group);
 
     this.player = new Player(this.camera);
     this.hand = new Hand(this.camera);
     this.input = new Input(this.renderer.domElement);
+    this.post = new PostFX(this.renderer, this.scene, this.camera, this.quality);
 
-    // Target outline + crack overlay.
-    this.highlight = new THREE.LineSegments(
-      new THREE.EdgesGeometry(new THREE.BoxGeometry(1.004, 1.004, 1.004)),
-      new THREE.LineBasicMaterial({ color: 0x15100b, transparent: true, opacity: 0.55 }),
-    );
-    this.highlight.visible = false;
-    this.crack = new THREE.Mesh(
-      new THREE.BoxGeometry(1.006, 1.006, 1.006),
-      new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, fog: true }),
-    );
-    this.crack.visible = false;
-    this.scene.add(this.highlight, this.crack);
-
-    // UI.
+    // ---- UI ----
     this.hud = new Hud(document.body);
     this.invScreen = new InventoryScreen(document.body, this.inventory);
     this.menu = new Menu(document.body, {
@@ -109,7 +134,6 @@ export class Game {
         this.resume();
       },
     });
-
     this.inventory.onChange = () => {
       this.hud.updateHotbar(this.inventory);
       this.invScreen.refresh();
@@ -121,7 +145,9 @@ export class Game {
     window.addEventListener('resize', () => this.onResize());
 
     if (!this.loadGame()) this.newWorld();
-    this.hud.updatePhase(this.magic);
+    const timeParam = Number(new URLSearchParams(location.search).get('time'));
+    if (timeParam > 0 && timeParam < 1) this.sky.setTimeOfDay(timeParam);
+    this.hud.updatePhase(this.monolith);
     this.hud.updateHotbar(this.inventory);
     this.hand.setItem(this.inventory.selectedStack?.item ?? null);
     this.menu.open('title', this.statsLine());
@@ -129,6 +155,28 @@ export class Game {
 
     this.timer.connect(document);
     this.renderer.setAnimationLoop((t) => this.frame(t));
+  }
+
+  private addDistantIslets(material: THREE.Material): void {
+    const r = rng(2024);
+    for (let i = 0; i < 9; i++) {
+      const ang = (i / 9) * Math.PI * 2 + r() * 0.5;
+      const dist = 70 + r() * 150;
+      const islet = new Island(
+        {
+          seed: 100 + i,
+          radius: 6 + r() * 10,
+          depth: 4 + r() * 7,
+          bumpiness: 0.4 + r() * 0.6,
+          segments: 48,
+          position: { x: Math.cos(ang) * dist, y: -25 + r() * 30, z: Math.sin(ang) * dist },
+        },
+        material,
+      );
+      islet.mesh.castShadow = false;
+      islet.mesh.rotation.y = r() * Math.PI;
+      this.scene.add(islet.mesh);
+    }
   }
 
   // ---------------------------------------------------------------- state
@@ -143,13 +191,17 @@ export class Game {
     this.hud.visible = s !== 'menu';
     if (s === 'menu') this.menu.open(this.playSeconds > 0 ? 'pause' : 'title', this.statsLine());
     else this.menu.close();
+    if (s === 'playing' && this.pendingNotice) {
+      this.hud.toastInfo(this.pendingNotice.title, this.pendingNotice.detail, '#c8b890', 10);
+      this.pendingNotice = null;
+    }
     if (s === 'inventory') this.invScreen.open();
     else if (this.invScreen.isOpen) this.invScreen.close();
   }
 
   private statsLine(): string {
     const mins = Math.floor(this.playSeconds / 60);
-    return `${this.magic.totalBreaks} breaks · ${this.world.size} blocks · ${mins} min played`;
+    return `${this.monolith.totalBreaks} breaks · ${mins} min played · graphics: ${this.quality.level}`;
   }
 
   private bindInput(): void {
@@ -167,7 +219,7 @@ export class Game {
     this.input.onKeyDown = (code) => {
       if (code === 'KeyE') {
         if (this.state === 'playing') {
-          this.state = 'inventory'; // set first so the unlock doesn't open the pause menu
+          this.state = 'inventory';
           this.input.unlock();
           this.setState('inventory');
         } else if (this.state === 'inventory') {
@@ -185,8 +237,6 @@ export class Game {
         if (n >= 1 && n <= HOTBAR_SIZE) this.selectSlot(n - 1);
       }
     };
-
-    // While the inventory is open, clicking outside the panel resumes play.
     this.invScreen.root.addEventListener('mousedown', (e) => {
       if (e.target === this.invScreen.root) this.input.lock();
     });
@@ -202,6 +252,7 @@ export class Game {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.post.setSize(window.innerWidth, window.innerHeight);
   }
 
   // ---------------------------------------------------------------- loop
@@ -209,40 +260,41 @@ export class Game {
   private frame(time: number): void {
     this.timer.update(time);
     const dt = Math.min(this.timer.getDelta(), 0.05);
-    if (this.state !== 'menu') this.update(dt);
-    this.sky.update(dt, this.camera.position);
-    this.magic.update(dt, this.mineKey === this.magicKey ? this.mineProgress : 0);
+    const active = this.state !== 'menu';
+    if (active) this.update(dt);
+    windUniforms.uTime.value += dt;
+    this.sky.update(dt, this.camera, active);
+    this.monolith.update(dt, this.target && this.input.leftDown && this.state === 'playing' ? this.mineProgress : 0, this.sky.daylight);
     this.particles.update(dt);
-    this.world.update();
-    this.renderer.render(this.scene, this.camera);
+    this.post.render(dt);
     this.input.endFrame();
-  }
-
-  private get magicKey(): string {
-    return `${MAGIC_POS.x},${MAGIC_POS.y},${MAGIC_POS.z}`;
   }
 
   private update(dt: number): void {
     const playing = this.state === 'playing';
     this.playSeconds += dt;
+    this.lookDX = this.lookDY = 0;
 
     if (playing) {
       const [dx, dy] = this.input.consumeMouse();
+      this.lookDX = dx;
+      this.lookDY = dy;
       this.player.look(dx, dy);
       const wheel = this.input.consumeWheel();
       if (wheel !== 0) this.selectSlot(this.inventory.selected + wheel);
     }
 
-    this.player.update(dt, playing ? this.input : null, this.world);
+    this.player.update(dt, playing ? this.input : null, this.physics);
     if (this.player.position.y < CONFIG.player.voidY) this.respawn();
 
     if (playing) this.updateInteraction(dt);
     else this.clearMining();
 
     const moving = this.player.onGround ? Math.min(1, Math.hypot(this.player.velocity.x, this.player.velocity.z) / 4) : 0;
-    this.hand.update(dt, moving);
+    this.hand.update(dt, moving, this.lookDX, this.lookDY);
     this.hud.update(dt);
     this.updateHint();
+    this.buildNoticeTimer -= dt;
 
     this.saveTimer += dt;
     if (this.saveTimer >= CONFIG.save.autoSaveSeconds) {
@@ -251,114 +303,63 @@ export class Game {
     }
   }
 
-  // ---------------------------------------------------------------- mining & building
+  // ---------------------------------------------------------------- mining the Monolith
 
   private updateInteraction(dt: number): void {
-    const dir = this.player.lookDirection(this.tmpDir);
-    this.target = this.world.raycast(this.camera.position, dir, CONFIG.player.reach);
+    this.raycaster.set(this.camera.position, this.player.lookDirection(this.tmpDir));
+    this.raycaster.far = CONFIG.player.reach;
+    const hit = this.raycaster.intersectObject(this.monolith.mesh, false)[0];
+    this.target = hit
+      ? { point: hit.point.clone(), normal: hit.face!.normal.clone().transformDirection(this.monolith.mesh.matrixWorld), distance: hit.distance }
+      : null;
     const t = this.target;
 
-    this.highlight.visible = !!t;
-    if (t) this.highlight.position.set(t.x + 0.5, t.y + 0.5, t.z + 0.5);
-
-    // ---- mining (hold left) ----
     if (t && this.input.leftDown) {
-      const k = `${t.x},${t.y},${t.z}`;
-      if (k !== this.mineKey) {
-        this.mineKey = k;
-        this.mineProgress = 0;
-        this.hitSoundTimer = 0;
-      }
-      const time = t.id === 'magic' ? CONFIG.mining.magicBlockTime : BLOCKS[t.id].hardness;
-      this.mineProgress += dt / time;
-      this.hitSoundTimer -= dt;
-      if (this.hitSoundTimer <= 0) {
-        this.hitSoundTimer = HIT_SOUND_INTERVAL;
-        this.sfx.hit(BLOCKS[t.id].sound);
-        this.particles.burst(t.x, t.y, t.z, this.blockCanvas(t), 2, 1.5);
-      }
+      this.mineProgress += dt / CONFIG.mining.magicBlockTime;
+      this.hitTimer -= dt;
       this.hand.setMining(true);
+      if (this.hitTimer <= 0) {
+        this.hitTimer = CONFIG.mining.hitInterval;
+        this.landHit(t);
+      }
       if (this.mineProgress >= 1) {
-        if (t.id === 'magic') this.breakMagic();
-        else this.breakBlock(t);
-        this.mineKey = null;
+        this.breakMonolith(t);
         this.mineProgress = 0;
+        this.hitTimer = CONFIG.mining.hitInterval;
       }
     } else {
       this.clearMining();
     }
+    this.hud.setMiningProgress(t && this.input.leftDown ? this.mineProgress : 0, true);
 
-    // Crack overlay.
-    if (t && this.mineKey && this.mineProgress > 0) {
-      const stage = Math.min(this.crackTextures.length - 1, Math.floor(this.mineProgress * this.crackTextures.length));
-      const mat = this.crack.material as THREE.MeshBasicMaterial;
-      if (mat.map !== this.crackTextures[stage]) {
-        mat.map = this.crackTextures[stage];
-        mat.needsUpdate = true;
-      }
-      this.crack.position.set(t.x + 0.5, t.y + 0.5, t.z + 0.5);
-      this.crack.scale.copy(t.id === 'magic' ? this.magic.mesh.scale : new THREE.Vector3(1, 1, 1));
-      this.crack.visible = true;
-    } else {
-      this.crack.visible = false;
-    }
-    this.hud.setMiningProgress(this.mineKey ? this.mineProgress : 0, t?.id === 'magic');
-
-    // ---- placing (right click, repeats while held) ----
-    this.placeTimer -= dt;
-    if (t && (this.input.rightPressed || (this.input.rightDown && this.placeTimer <= 0))) {
-      this.placeTimer = PLACE_REPEAT;
-      this.tryPlace(t);
+    if (this.input.rightPressed && this.buildNoticeTimer <= 0) {
+      this.buildNoticeTimer = 4;
+      this.hud.toastInfo('Building is being rebuilt', 'Foundations, walls and roofs arrive in the next update.', '#b8b0a0', 3);
     }
   }
 
   private clearMining(): void {
-    this.mineKey = null;
     this.mineProgress = 0;
-    this.crack.visible = false;
+    this.hitTimer = 0;
     this.hand.setMining(false);
-    this.hud.setMiningProgress(0, false);
-    if (this.state !== 'playing') this.highlight.visible = false;
+    this.hud.setMiningProgress(0, true);
   }
 
-  private blockCanvas(t: { id: keyof typeof BLOCKS }): HTMLCanvasElement {
-    return t.id === 'magic' ? getMagicTextures(this.magic.phase).canvas : getTextureCanvas(BLOCKS[t.id].textures.side);
+  /** A single strike while mining: sound, a puff of dust, a few chips, a little shake. */
+  private landHit(t: MonolithTarget): void {
+    this.sfx.hit('stone');
+    this.monolith.hit();
+    this.particles.dust(t.point, 3, 0.15, 0.35);
+    this.particles.chipBurst(t.point, t.normal, 3, 2.2);
+    this.player.shake(0.12);
   }
 
-  private breakBlock(t: RayHit): void {
-    const def = BLOCKS[t.id];
-    this.world.remove(t.x, t.y, t.z);
-    this.particles.burst(t.x, t.y, t.z, this.blockCanvas(t), 16, 3);
-    this.sfx.breakBlock(def.sound);
-    if (def.drop) this.give(def.drop, 1);
-  }
-
-  private tryPlace(t: RayHit): void {
-    const stack = this.inventory.selectedStack;
-    if (!stack) return;
-    const blockId = ITEMS[stack.item].places;
-    if (!blockId) return;
-    const x = t.x + t.nx;
-    const y = t.y + t.ny;
-    const z = t.z + t.nz;
-    if (this.world.isSolid(x, y, z) || this.player.overlapsBlock(x, y, z)) return;
-    this.world.set(x, y, z, blockId);
-    this.inventory.takeFromSlot(this.inventory.selected, 1);
-    this.sfx.place();
-    this.hand.triggerSwing();
-  }
-
-  /** Adds items to the inventory, warning if some didn't fit. */
-  private give(item: ItemId, count: number): void {
-    const left = this.inventory.add(item, count);
-    if (left > 0) this.hud.toastInfo('Inventory full', `${left} ${ITEMS[item].name} fell into the void.`, '#d0583c', 3);
-  }
-
-  // ---------------------------------------------------------------- the magic block
-
-  private breakMagic(): void {
-    const phaseUp = this.magic.registerBreak();
-    this.particles.burst(MAGIC_POS.x, MAGIC_POS.y, MAGIC_POS.z, getMagicTextures(this.magic.phase).canvas, 22, 4);
+  private breakMonolith(t: MonolithTarget): void {
+    const phaseUp = this.monolith.registerBreak(t.point);
+    this.particles.chunk(t.point, t.normal);
+    this.particles.chipBurst(t.point, t.normal, 18, 3.2);
+    this.particles.dust(t.point, 14, 0.45, 0.75);
+    this.player.shake(0.42);
     this.sfx.magicBreak();
 
     let result: LootResult;
@@ -366,7 +367,7 @@ export class Game {
       const d = STARTER_DROPS[this.starterIndex++];
       result = { kind: 'items', rarity: 'common', items: [{ item: d.item, count: d.count }] };
     } else {
-      result = rollLoot(this.magic.phaseNumber);
+      result = rollLoot(this.monolith.phaseNumber);
     }
 
     if (result.kind === 'items') {
@@ -378,23 +379,45 @@ export class Game {
     }
 
     if (phaseUp) {
-      const p = this.magic.phase;
-      this.hud.toastInfo(`Phase ${this.magic.phaseNumber + 1}: ${p.name}`, 'The block shifts. New things stir inside it.', p.palette.vein, 6);
+      const p = this.monolith.phase;
+      this.hud.toastInfo(`Phase ${this.monolith.phaseNumber + 1}: ${p.name}`, 'The Monolith shifts. New things stir inside it.', p.palette.vein, 6);
       this.sfx.phaseUp();
+      this.player.shake(0.6);
     }
-    this.hud.updatePhase(this.magic);
+    this.hud.updatePhase(this.monolith);
+  }
+
+  private give(item: ItemId, count: number): void {
+    const left = this.inventory.add(item, count);
+    if (left > 0) this.hud.toastInfo('Inventory full', `${left} ${ITEMS[item].name} fell into the void.`, '#d0583c', 3);
   }
 
   private applyEvent(event: Parameters<typeof runLootEvent>[0], rarity: Rarity): void {
     const outcome = runLootEvent(event, {
       inventory: this.inventory,
-      world: this.world,
       playerPosition: this.player.position,
+      monolithPosition: this.monolith.mesh.position,
       knockPlayer: (v) => this.player.knock(v),
-      onBlockRemoved: (x, y, z) => this.particles.burst(x, y, z, getTextureCanvas('dirt'), 18, 3),
+      crumbleEdge: () => {
+        // Nothing is built yet, so the island itself sheds loose rock (cosmetic for now).
+        const r = Math.random;
+        for (let i = 0; i < 3; i++) {
+          const a = r() * Math.PI * 2;
+          const rad = this.island.rimRadius(a) - 0.1;
+          const p = new THREE.Vector3(Math.cos(a) * rad, (this.island.heightAt(Math.cos(a) * (rad - 0.2), Math.sin(a) * (rad - 0.2)) ?? 0) - 0.2, Math.sin(a) * rad);
+          const out = new THREE.Vector3(Math.cos(a), -0.2, Math.sin(a));
+          this.particles.chipBurst(p, out, 10, 2.5);
+          this.particles.dust(p, 6, 0.4, 0.8);
+        }
+        return 0;
+      },
     });
     this.hud.toastEvent(rarity, outcome.title, outcome.detail);
-    if (outcome.sound !== 'dud') this.hud.damageFlash();
+    if (outcome.sound !== 'dud') {
+      this.hud.damageFlash();
+      this.player.shake(outcome.sound === 'boom' ? 0.7 : 0.45);
+    }
+    if (outcome.sound === 'boom') this.particles.dust(this.monolith.mesh.position.clone().setY(this.monolith.topY - 0.8), 20, 1.4, 1.1);
     this.sfx[outcome.sound]();
   }
 
@@ -406,7 +429,6 @@ export class Game {
     for (let i = 0; i < this.inventory.slots.length; i++) {
       const s = this.inventory.slots[i];
       if (!s) continue;
-      // Lose a fraction of each stack; the fractional part is a dice roll, so a single item can survive.
       const exact = s.count * lossFrac;
       const n = Math.floor(exact) + (Math.random() < exact % 1 ? 1 : 0);
       if (n <= 0) continue;
@@ -414,19 +436,20 @@ export class Game {
       lost.set(s.item, (lost.get(s.item) ?? 0) + n);
     }
     this.inventory.changed();
-    const [x, y, z] = this.spawnPoint();
-    this.player.teleport(x, y, z);
+    this.placeAtSpawn();
     this.sfx.fall();
     const list = [...lost].slice(0, 4).map(([id, n]) => `${n} ${ITEMS[id].name}`).join(', ');
     this.hud.toastInfo('Lost to the void', list ? `You lost ${list}${lost.size > 4 ? '…' : '.'}` : 'You had nothing to lose.', RARITY_COLORS.junk, 5);
     this.hud.damageFlash();
   }
 
-  /** Top of the column above the magic block, where there's room to stand. */
-  private spawnPoint(): [number, number, number] {
-    let y = MAGIC_POS.y + 1;
-    while (this.world.isSolid(MAGIC_POS.x, y, MAGIC_POS.z) || this.world.isSolid(MAGIC_POS.x, y + 1, MAGIC_POS.z)) y++;
-    return [MAGIC_POS.x + 0.5, y, MAGIC_POS.z + 0.5];
+  /** Stand a few steps in front of the Monolith, facing it. */
+  private placeAtSpawn(): void {
+    const z = 2.7;
+    this.player.teleport(0, (this.island.heightAt(0, z) ?? 0) + 0.05, z);
+    this.player.yaw = 0;
+    this.player.pitch = 0.05;
+    this.player.update(0, null, this.physics);
   }
 
   // ---------------------------------------------------------------- hints
@@ -434,10 +457,8 @@ export class Game {
   private updateHint(): void {
     let hint: string | null = null;
     if (this.state === 'playing') {
-      const hasBlock = this.inventory.slots.some((s) => s && ITEMS[s.item].places);
-      if (this.magic.totalBreaks === 0) hint = 'Look down and hold LEFT CLICK on the glowing block';
-      else if (this.world.size === 1 && hasBlock) hint = 'Pick a block (1-9) and RIGHT CLICK a face of the block to place it';
-      else if (this.magic.totalBreaks < 8 && this.world.size < 4) hint = 'Keep breaking the block. Hold OPTION or Z to crouch safely at edges';
+      if (this.monolith.totalBreaks === 0) hint = 'Walk up to the Monolith and hold LEFT CLICK to break it';
+      else if (this.monolith.totalBreaks < 6) hint = 'Keep breaking it. Careful near the edge: hold OPTION or Z to crouch';
     }
     this.hud.setHint(hint);
   }
@@ -455,13 +476,14 @@ export class Game {
   private snapshot(): SaveData {
     const p = this.player;
     return {
-      version: 1,
+      version: 2,
       savedAt: Date.now(),
       playSeconds: this.playSeconds,
+      timeOfDay: this.sky.timeOfDay,
       player: { x: p.position.x, y: p.position.y, z: p.position.z, yaw: p.yaw, pitch: p.pitch },
       inventory: this.inventory.serialize(),
-      world: this.world.serialize(),
-      magic: { breaks: this.magic.totalBreaks, starterIndex: this.starterIndex },
+      magic: { breaks: this.monolith.totalBreaks, starterIndex: this.starterIndex },
+      legacyBlocks: this.legacyBlocks,
     };
   }
 
@@ -472,41 +494,51 @@ export class Game {
   private loadGame(): boolean {
     const data = this.saves.load();
     if (!data) return false;
-    this.world.load(data.world);
-    // The magic block must always exist.
-    this.world.set(MAGIC_POS.x, MAGIC_POS.y, MAGIC_POS.z, 'magic');
     this.inventory.load(data.inventory);
-    this.magic.totalBreaks = data.magic.breaks;
+    this.monolith.totalBreaks = data.magic.breaks;
+    this.particles.setLook(this.monolith.phase.look);
     this.starterIndex = data.magic.starterIndex ?? STARTER_DROPS.length;
     this.playSeconds = data.playSeconds ?? 0;
+    this.legacyBlocks = data.legacyBlocks ?? [];
+    this.sky.setTimeOfDay(data.timeOfDay ?? CONFIG.world.startTime);
+
     const p = data.player;
-    if (p.y < CONFIG.player.voidY + 5) {
-      const [x, y, z] = this.spawnPoint();
-      this.player.teleport(x, y, z);
+    const ground = this.physics.groundHeight(p.x, p.z, CONFIG.player.radius, p.y + 1);
+    if (ground === -Infinity || p.y < ground - 0.5) {
+      this.placeAtSpawn();
     } else {
-      this.player.teleport(p.x, p.y, p.z);
+      this.player.teleport(p.x, Math.max(p.y, ground), p.z);
+      this.player.yaw = p.yaw;
+      this.player.pitch = p.pitch;
+      this.player.update(0, null, this.physics);
     }
-    this.player.yaw = p.yaw;
-    this.player.pitch = p.pitch;
-    this.player.update(0, null, this.world); // place the camera
+
+    if (data.migratedFrom === 1) {
+      const n = this.legacyBlocks.length;
+      this.pendingNotice = {
+        title: 'The world has been reshaped',
+        detail:
+          n > 0
+            ? `Your ${n} placed block${n === 1 ? ' is' : 's are'} stored safely and will return as building pieces when building arrives. Breaks and inventory are kept.`
+            : 'Your breaks and inventory are kept.',
+      };
+      this.saveGame();
+    }
     return true;
   }
 
   private newWorld(): void {
     this.saves.clear();
-    this.world.clear();
-    this.world.set(MAGIC_POS.x, MAGIC_POS.y, MAGIC_POS.z, 'magic');
     this.inventory.load({ slots: [], selected: 0 });
-    this.magic.totalBreaks = 0;
+    this.monolith.totalBreaks = 0;
+    this.particles.setLook(this.monolith.phase.look);
     this.starterIndex = 0;
     this.playSeconds = 0;
     this.saveTimer = 0;
-    const [x, y, z] = this.spawnPoint();
-    this.player.teleport(x, y, z);
-    this.player.yaw = Math.PI * 0.25;
-    this.player.pitch = -0.55;
-    this.player.update(0, null, this.world);
-    this.hud.updatePhase(this.magic);
+    this.legacyBlocks = [];
+    this.sky.setTimeOfDay(CONFIG.world.startTime);
+    this.placeAtSpawn();
+    this.hud.updatePhase(this.monolith);
     this.saveGame();
   }
 }

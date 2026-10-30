@@ -1,9 +1,11 @@
-// The held item, drawn in the lower-right of the view. Swings when mining or placing.
+// The held item, shown in the lower right of the view. Swings when mining, bobs while walking
+// and lags slightly behind mouse movement. Hands and proper tools arrive in a later stage.
 
 import * as THREE from 'three';
-import { ITEMS, type ItemId } from '../data/items';
-import { blockMaterials } from '../world/World';
-import { itemIconCanvas } from '../ui/icons';
+import type { ItemId } from '../data/items';
+import { makeItemModel } from '../items/itemModels';
+
+const REST = new THREE.Vector3(0.3, -0.27, -0.52);
 
 export class Hand {
   readonly root = new THREE.Group();
@@ -12,47 +14,27 @@ export class Hand {
   private swing = 1;
   private mining = false;
   private t = 0;
-  private readonly cubeGeo = new THREE.BoxGeometry(1, 1, 1);
-  private readonly fist: THREE.Mesh;
+  private sway = new THREE.Vector2();
+  private equip = 1;
 
   constructor(camera: THREE.Camera) {
     camera.add(this.root);
-    this.root.position.set(0.36, -0.3, -0.58);
-    // A simple gloved fist for when nothing is held.
-    this.fist = new THREE.Mesh(
-      new THREE.BoxGeometry(0.14, 0.14, 0.34),
-      new THREE.MeshStandardMaterial({ color: 0x6a5240, roughness: 1 }),
-    );
-    this.fist.rotation.set(0.2, -0.25, 0);
+    this.root.position.copy(REST);
   }
 
   setItem(id: ItemId | null): void {
     if (id === this.current) return;
     this.current = id;
     if (this.model) this.root.remove(this.model);
-    if (!id) {
-      this.model = this.fist;
-    } else {
-      const def = ITEMS[id];
-      if (def.places) {
-        const m = new THREE.Mesh(this.cubeGeo, blockMaterials(def.places));
-        m.scale.setScalar(0.15);
-        m.rotation.set(0.15, 0.7, 0);
-        this.model = m;
-      } else {
-        const tex = new THREE.CanvasTexture(itemIconCanvas(id));
-        tex.colorSpace = THREE.SRGBColorSpace;
-        tex.magFilter = THREE.NearestFilter;
-        const m = new THREE.Mesh(
-          new THREE.PlaneGeometry(0.24, 0.24),
-          new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide, fog: false }),
-        );
-        m.rotation.set(0, -0.4, 0.15);
-        this.model = m;
-      }
+    this.model = null;
+    if (id) {
+      this.model = makeItemModel(id);
+      this.model.scale.setScalar(0.16);
+      this.model.rotation.set(0.25, -0.6, 0.1);
+      this.model.traverse((o) => (o.castShadow = false));
+      this.root.add(this.model);
     }
-    this.root.add(this.model);
-    this.swing = 0.6; // little "equip" bob
+    this.equip = 0;
   }
 
   triggerSwing(): void {
@@ -63,14 +45,23 @@ export class Hand {
     this.mining = m;
   }
 
-  update(dt: number, moving: number): void {
+  /** `moving` 0..1 walk amount; `look` is this frame's mouse delta for sway. */
+  update(dt: number, moving: number, lookDX: number, lookDY: number): void {
     this.t += dt;
     if (this.mining && this.swing >= 1) this.swing = 0;
-    this.swing = Math.min(1, this.swing + dt * 4);
-    const s = Math.sin(this.swing * Math.PI);
-    const bobX = Math.sin(this.t * 7) * 0.012 * moving;
-    const bobY = Math.abs(Math.cos(this.t * 7)) * 0.014 * moving;
-    this.root.position.set(0.36 + bobX - s * 0.12, -0.3 + bobY - s * 0.06, -0.58 - s * 0.12);
-    this.root.rotation.set(-s * 0.9, s * 0.3, 0);
+    this.swing = Math.min(1, this.swing + dt * 3.2);
+    this.equip = Math.min(1, this.equip + dt * 4);
+    // Sway lags behind the view.
+    this.sway.x += (THREE.MathUtils.clamp(-lookDX * 0.0006, -0.04, 0.04) - this.sway.x) * Math.min(1, dt * 10);
+    this.sway.y += (THREE.MathUtils.clamp(lookDY * 0.0006, -0.04, 0.04) - this.sway.y) * Math.min(1, dt * 10);
+
+    // Wind-up then a fast strike forward.
+    const p = this.swing;
+    const strike = p < 0.35 ? -Math.sin((p / 0.35) * Math.PI * 0.5) * 0.4 : Math.sin(((p - 0.35) / 0.65) * Math.PI);
+    const bobX = Math.sin(this.t * 7.5) * 0.012 * moving;
+    const bobY = Math.abs(Math.cos(this.t * 7.5)) * 0.016 * moving;
+    const drop = (1 - this.equip) * 0.25;
+    this.root.position.set(REST.x + bobX + this.sway.x - strike * 0.1, REST.y + bobY + this.sway.y - strike * 0.05 - drop, REST.z - strike * 0.14);
+    this.root.rotation.set(-strike * 0.9, strike * 0.25, strike * 0.2);
   }
 }

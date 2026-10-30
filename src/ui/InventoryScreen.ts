@@ -154,7 +154,7 @@ export class InventoryScreen {
     const s = this.inv.slots[i];
     if (!s) return;
     const d = ITEMS[s.item];
-    this.info.innerHTML = `<b>${d.name}</b>${d.places ? ' · placeable' : ''}${d.perishable ? ' · perishable' : ''}<br>${d.description}`;
+    this.info.innerHTML = `<b>${d.name}</b>${d.perishable ? ' · perishable' : ''}<br>${d.description}`;
   }
 
   private renderCursor(): void {

@@ -36,7 +36,7 @@ export type LootEventId =
   | 'burst'
   /** A few perishable items in the inventory turn to rot. */
   | 'rot'
-  /** A few blocks of the player's platform crumble into the void. */
+  /** A few pieces at the edge of the base break away into the void. */
   | 'crumble'
   /** Nothing at all. */
   | 'dud';
